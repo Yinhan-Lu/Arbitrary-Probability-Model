@@ -31,7 +31,22 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.cuda.amp import autocast, GradScaler
-from torch.utils.tensorboard import SummaryWriter
+
+# Setup logging first (before optional imports)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+# Optional TensorBoard import
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    TENSORBOARD_AVAILABLE = True
+except ImportError:
+    TENSORBOARD_AVAILABLE = False
+    logger.warning("TensorBoard not available. Install with: pip install tensorboard")
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
@@ -39,14 +54,6 @@ sys.path.append(str(Path(__file__).parent))
 from model.config import get_config
 from model.arbitrary_prob_gpt2 import GPT2Model
 from train.dataset import get_dataloader
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
 
 
 class ComprehensiveTrainer:
@@ -153,7 +160,11 @@ class ComprehensiveTrainer:
             logger.info("Using mixed precision training (FP16)")
 
         # Setup logging
-        self.tb_writer = SummaryWriter(log_dir=self.log_dir / "tensorboard")
+        if TENSORBOARD_AVAILABLE:
+            self.tb_writer = SummaryWriter(log_dir=self.log_dir / "tensorboard")
+        else:
+            self.tb_writer = None
+            logger.warning("TensorBoard logging disabled (not installed)")
 
         # WandB integration (optional)
         self.use_wandb = args.use_wandb
@@ -360,10 +371,11 @@ class ComprehensiveTrainer:
                         )
 
                         # TensorBoard logging
-                        self.tb_writer.add_scalar("train/loss", avg_loss, self.global_step)
-                        self.tb_writer.add_scalar("train/perplexity", perplexity, self.global_step)
-                        self.tb_writer.add_scalar("train/learning_rate", lr, self.global_step)
-                        self.tb_writer.add_scalar("train/grad_norm", grad_norm, self.global_step)
+                        if self.tb_writer:
+                            self.tb_writer.add_scalar("train/loss", avg_loss, self.global_step)
+                            self.tb_writer.add_scalar("train/perplexity", perplexity, self.global_step)
+                            self.tb_writer.add_scalar("train/learning_rate", lr, self.global_step)
+                            self.tb_writer.add_scalar("train/grad_norm", grad_norm, self.global_step)
 
                         # WandB logging
                         if self.use_wandb:
@@ -388,8 +400,9 @@ class ComprehensiveTrainer:
                         metrics["val_perplexity"] = eval_results["perplexity"]
 
                         # TensorBoard logging
-                        self.tb_writer.add_scalar("eval/loss", eval_results["loss"], self.global_step)
-                        self.tb_writer.add_scalar("eval/perplexity", eval_results["perplexity"], self.global_step)
+                        if self.tb_writer:
+                            self.tb_writer.add_scalar("eval/loss", eval_results["loss"], self.global_step)
+                            self.tb_writer.add_scalar("eval/perplexity", eval_results["perplexity"], self.global_step)
 
                         # WandB logging
                         if self.use_wandb:
@@ -432,7 +445,8 @@ class ComprehensiveTrainer:
         self._save_checkpoint("final_model")
 
         # Close loggers
-        self.tb_writer.close()
+        if self.tb_writer:
+            self.tb_writer.close()
         if self.use_wandb:
             import wandb
             wandb.finish()
