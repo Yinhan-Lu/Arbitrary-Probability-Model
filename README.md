@@ -174,7 +174,29 @@ logits, loss = model(input_ids, attention_mask=custom_mask)
 
 ## Training
 
-### Basic Training
+### Production Training (SLURM Cluster)
+
+For full-scale training on Wikipedia with comprehensive logging:
+
+**H100 GPU (Recommended):**
+```bash
+sbatch scripts/submit_training_h100.sh
+```
+
+**A100 GPU:**
+```bash
+sbatch scripts/submit_training.sh
+```
+
+See [TRAINING_GUIDE.md](docs/TRAINING_GUIDE.md) for complete documentation on:
+- SLURM job submission
+- Hyperparameter tuning
+- Monitoring and logging
+- TensorBoard/WandB integration
+- Checkpoint management
+- Troubleshooting
+
+### Basic Training (Development)
 
 ```bash
 python scripts/train.py --config tiny --max_epochs 3
@@ -183,27 +205,22 @@ python scripts/train.py --config tiny --max_epochs 3
 ### Advanced Options
 
 ```bash
-python scripts/train.py \
-    --config distilgpt2 \
-    --max_epochs 10 \
-    --batch_size 32 \
+python train_distilgpt2.py \
+    --model_config distilgpt2 \
+    --num_epochs 3 \
+    --batch_size 8 \
+    --gradient_accumulation_steps 16 \
     --learning_rate 5e-4 \
-    --weight_decay 0.01 \
-    --warmup_steps 500 \
-    --num_train_samples 100000 \
-    --num_val_samples 5000 \
-    --log_interval 100 \
-    --eval_interval 1000 \
-    --save_interval 5000 \
+    --fp16 \
+    --do_eval \
     --device cuda
 ```
 
 ### Resume Training
 
 ```bash
-python scripts/train.py \
-    --config distilgpt2 \
-    --resume checkpoints/checkpoint_epoch3_step15000.pt
+python train_distilgpt2.py \
+    --resume_from_checkpoint experiments/.../checkpoints/checkpoint_step_5000.pt
 ```
 
 ## Monitoring Training
