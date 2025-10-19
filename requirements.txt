@@ -1,0 +1,17 @@
+# GPT-2 PyTorch Implementation - Requirements
+
+# Core dependencies
+torch>=2.0.0
+transformers>=4.30.0
+datasets>=2.12.0
+
+# Visualization
+matplotlib>=3.5.0
+
+# Optional but recommended
+numpy>=1.23.0
+tqdm>=4.65.0
+
+# For better performance (optional)
+# accelerate>=0.20.0  # For distributed training
+# tensorboard>=2.13.0  # For advanced logging

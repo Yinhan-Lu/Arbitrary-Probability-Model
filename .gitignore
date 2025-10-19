@@ -1,0 +1,176 @@
+# .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+virtualenv/
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Model files
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.pickle
+model_weights/
+saved_models/
+
+# Logs and checkpoints
+logs/
+checkpoints/
+runs/
+wandb/
+tensorboard/
+*.log
+*.csv
+*.png
+*.jpg
+*.jpeg
+training_output/
+
+# Data files
+data/
+datasets/
+cache/
+cached_data/
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.parquet
+*.feather
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+.jupyter/
+
+# IDE Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+secrets.yaml
+secrets.json
+config.local.yaml
+credentials.json
+api_keys.txt
+*.key
+*.pem
+*.cert
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~.nib
+local.properties
+
+# Archives
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+*.dmg
+*.iso
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Build directories
+docs/_build/
+docs/.doctrees/
+site/
+
+# Distribution / Packaging
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+
+# Translations
+*.mo
+*.pot
+
+# Backup Files
+*.bak
+*~
+*.backup
+
+# Keep empty directories
+!.gitkeep
+
+# Project-specific
+docs/
+.claude/
