@@ -5,8 +5,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --partition=unkillable
 #SBATCH --gres=gpu:a100:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #SBATCH --ntasks=1
 
 # DistilGPT-2 Training Job on Wikipedia Dataset
@@ -100,7 +100,7 @@ python train_distilgpt2.py \
     --output_dir $OUTPUT_DIR \
     --exp_name $EXP_NAME \
     --device cuda \
-    --num_workers 8
+    --num_workers 4
 
 EXIT_CODE=$?
 

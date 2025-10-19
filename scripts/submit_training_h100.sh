@@ -5,8 +5,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --partition=unkillable
 #SBATCH --gres=gpu:h100:1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #SBATCH --ntasks=1
 
 # DistilGPT-2 Training on H100 GPU (Best Available)
@@ -76,7 +76,8 @@ echo "  Learning Rate: $LEARNING_RATE"
 echo "  Number of Epochs: $NUM_EPOCHS"
 echo "  Warmup Steps: $WARMUP_STEPS"
 echo "  Mixed Precision: FP16 Enabled"
-echo "  Data Loading Workers: 16"
+echo "  Data Loading Workers: 8"
+echo "  CPUs: $SLURM_CPUS_PER_TASK"
 echo "========================================="
 
 # Run training with H100-optimized settings
@@ -106,7 +107,7 @@ python train_distilgpt2.py \
     --output_dir $OUTPUT_DIR \
     --exp_name $EXP_NAME \
     --device cuda \
-    --num_workers 16
+    --num_workers 4
 
 EXIT_CODE=$?
 
