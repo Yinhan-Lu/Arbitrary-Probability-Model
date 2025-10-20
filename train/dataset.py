@@ -206,6 +206,12 @@ class WikipediaDataset(Dataset):
         else:
             text = str(item)
 
+        # Skip empty or very short texts (WikiText has many empty lines)
+        if not text or len(text.strip()) < 10:
+            # Return a minimal valid sample instead of skipping
+            # (we need to return something for indexing to work)
+            text = "This is a placeholder text."
+
         # Tokenize
         encoding = self.tokenizer(
             text,
@@ -295,8 +301,8 @@ class StreamingWikipediaDataset:
             else:
                 text = str(item)
 
-            # Skip empty texts
-            if not text.strip():
+            # Skip empty or very short texts (WikiText has many empty lines)
+            if not text or len(text.strip()) < 10:
                 continue
 
             # Tokenize
