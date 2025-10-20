@@ -4,7 +4,7 @@
 #SBATCH --error=logs/slurm_%j.err
 #SBATCH --time=48:00:00
 #SBATCH --partition=unkillable
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:a100l:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
@@ -39,16 +39,22 @@ export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
 
 # Change to submission directory
-cd $SLURM_SUBMIT_DIR
+cd "$SLURM_SUBMIT_DIR"
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
 # Print Python and CUDA versions
 echo "Python version:"
-python --version
+python3 --version
 echo "PyTorch version:"
-python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else \"N/A\"}')"
+python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else \"N/A\"}')"
+echo "========================================="
+
+# Install missing dependencies if needed
+echo "Checking and installing dependencies..."
+python3 -m pip install --user --quiet filelock transformers datasets matplotlib tensorboard || echo "Warning: Some dependencies may not be installed"
+echo "Dependencies check complete"
 echo "========================================="
 
 # Training parameters
@@ -74,7 +80,7 @@ echo "  Warmup Steps: $WARMUP_STEPS"
 echo "========================================="
 
 # Run training
-python train_distilgpt2.py \
+python3 train_distilgpt2.py \
     --model_config distilgpt2 \
     --dataset_name wikipedia \
     --dataset_config "20220301.en" \
