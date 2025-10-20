@@ -9,9 +9,60 @@ from transformers import GPT2Tokenizer
 from datasets import load_dataset
 from typing import Optional, Dict, List
 import logging
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def load_dataset_with_retry(dataset_name, dataset_config, split, max_retries=3, retry_delay=5, streaming=False):
+    """
+    Load HuggingFace dataset with retry logic to handle temporary server errors
+
+    Args:
+        dataset_name: Name of the dataset
+        dataset_config: Dataset configuration
+        split: Dataset split
+        max_retries: Maximum number of retry attempts
+        retry_delay: Delay between retries in seconds
+        streaming: Whether to use streaming mode
+
+    Returns:
+        Loaded dataset or None if all attempts fail
+    """
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempting to load dataset {dataset_name} (attempt {attempt + 1}/{max_retries})...")
+
+            if streaming:
+                dataset = load_dataset(
+                    dataset_name,
+                    dataset_config,
+                    split=split,
+                    streaming=True
+                )
+            else:
+                dataset = load_dataset(
+                    dataset_name,
+                    dataset_config,
+                    split=split
+                )
+
+            logger.info(f"Successfully loaded {dataset_name}!")
+            return dataset
+
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"All {max_retries} attempts failed for {dataset_name}")
+                return None
+
+    return None
 
 
 class WikipediaDataset(Dataset):
@@ -48,42 +99,66 @@ class WikipediaDataset(Dataset):
 
         logger.info(f"Loading Wikipedia dataset: {dataset_name} ({dataset_config}), split={split}")
 
-        # Load Wikipedia dataset from Hugging Face
-        try:
-            if streaming:
-                self.dataset = load_dataset(
-                    dataset_name,
-                    dataset_config,
-                    split=split,
-                    streaming=True
-                )
-                if num_samples:
-                    self.dataset = self.dataset.take(num_samples)
-                    self.num_samples = num_samples
-                else:
-                    self.num_samples = None  # Unknown for streaming
+        # Try to load dataset with retry logic
+        self.dataset = load_dataset_with_retry(
+            dataset_name=dataset_name,
+            dataset_config=dataset_config,
+            split=split,
+            max_retries=3,
+            retry_delay=5,
+            streaming=streaming
+        )
+
+        # If primary dataset failed, try fallback options
+        if self.dataset is None:
+            logger.warning("Primary dataset failed after retries. Trying fallback options...")
+
+            # Fallback 1: Try WikiText-103 (larger, more robust)
+            logger.info("Attempting fallback: WikiText-103...")
+            self.dataset = load_dataset_with_retry(
+                dataset_name="wikitext",
+                dataset_config="wikitext-103-raw-v1",
+                split=split,
+                max_retries=2,
+                retry_delay=3,
+                streaming=streaming
+            )
+
+        # Fallback 2: Try WikiText-2 (smallest, most reliable)
+        if self.dataset is None:
+            logger.warning("WikiText-103 also failed. Trying WikiText-2...")
+            self.dataset = load_dataset_with_retry(
+                dataset_name="wikitext",
+                dataset_config="wikitext-2-raw-v1",
+                split=split,
+                max_retries=2,
+                retry_delay=3,
+                streaming=streaming
+            )
+
+        # If all attempts failed, raise error
+        if self.dataset is None:
+            raise RuntimeError(
+                "Failed to load any dataset. Please check:\n"
+                "1. Internet connection\n"
+                "2. HuggingFace Hub status (https://status.huggingface.co)\n"
+                "3. Disk space for caching datasets\n"
+                "Consider using cached datasets or downloading datasets manually."
+            )
+
+        # Process loaded dataset
+        if streaming:
+            if num_samples:
+                self.dataset = self.dataset.take(num_samples)
+                self.num_samples = num_samples
             else:
-                self.dataset = load_dataset(
-                    dataset_name,
-                    dataset_config,
-                    split=split
-                )
-                if num_samples:
-                    self.dataset = self.dataset.select(range(min(num_samples, len(self.dataset))))
-                self.num_samples = len(self.dataset)
-
-            logger.info(f"Dataset loaded successfully. Samples: {self.num_samples if self.num_samples else 'streaming'}")
-
-        except Exception as e:
-            logger.error(f"Failed to load Wikipedia dataset: {e}")
-            logger.info("Falling back to a smaller dataset for testing...")
-
-            # Fallback to a smaller dataset for testing
-            self.dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split=split)
+                self.num_samples = None  # Unknown for streaming
+        else:
             if num_samples:
                 self.dataset = self.dataset.select(range(min(num_samples, len(self.dataset))))
             self.num_samples = len(self.dataset)
-            logger.info(f"Using WikiText-2 dataset instead. Samples: {self.num_samples}")
+
+        logger.info(f"Dataset loaded successfully. Samples: {self.num_samples if self.num_samples else 'streaming'}")
 
     def __len__(self):
         if self.streaming or self.num_samples is None:
@@ -151,21 +226,45 @@ class StreamingWikipediaDataset:
 
         logger.info(f"Loading streaming Wikipedia dataset: {dataset_name}")
 
-        try:
-            self.dataset = load_dataset(
-                dataset_name,
-                dataset_config,
+        # Try primary dataset with retry
+        self.dataset = load_dataset_with_retry(
+            dataset_name=dataset_name,
+            dataset_config=dataset_config,
+            split=split,
+            max_retries=3,
+            retry_delay=5,
+            streaming=True
+        )
+
+        # Fallback to WikiText-103
+        if self.dataset is None:
+            logger.warning("Primary dataset failed. Trying WikiText-103...")
+            self.dataset = load_dataset_with_retry(
+                dataset_name="wikitext",
+                dataset_config="wikitext-103-raw-v1",
                 split=split,
+                max_retries=2,
+                retry_delay=3,
                 streaming=True
             )
-        except Exception as e:
-            logger.error(f"Failed to load Wikipedia dataset: {e}")
-            logger.info("Falling back to WikiText-2...")
-            self.dataset = load_dataset(
-                "wikitext",
-                "wikitext-2-raw-v1",
+
+        # Fallback to WikiText-2
+        if self.dataset is None:
+            logger.warning("WikiText-103 failed. Trying WikiText-2...")
+            self.dataset = load_dataset_with_retry(
+                dataset_name="wikitext",
+                dataset_config="wikitext-2-raw-v1",
                 split=split,
+                max_retries=2,
+                retry_delay=3,
                 streaming=True
+            )
+
+        # If all failed, raise error
+        if self.dataset is None:
+            raise RuntimeError(
+                "Failed to load any streaming dataset. Please check your internet connection "
+                "and HuggingFace Hub status."
             )
 
     def __iter__(self):
