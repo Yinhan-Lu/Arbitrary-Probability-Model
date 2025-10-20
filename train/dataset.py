@@ -30,37 +30,53 @@ def load_dataset_with_retry(dataset_name, dataset_config, split, max_retries=3, 
     Returns:
         Loaded dataset or None if all attempts fail
     """
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Attempting to load dataset {dataset_name} (attempt {attempt + 1}/{max_retries})...")
+    import os
 
-            if streaming:
-                dataset = load_dataset(
-                    dataset_name,
-                    dataset_config,
-                    split=split,
-                    streaming=True
-                )
-            else:
-                dataset = load_dataset(
-                    dataset_name,
-                    dataset_config,
-                    split=split
-                )
+    # Try with mirror endpoint first if default fails
+    endpoints = [None, 'https://hf-mirror.com']
 
-            logger.info(f"Successfully loaded {dataset_name}!")
-            return dataset
+    for endpoint in endpoints:
+        if endpoint:
+            logger.info(f"Trying with mirror endpoint: {endpoint}")
+            os.environ['HF_ENDPOINT'] = endpoint
+        else:
+            # Clear any previous endpoint setting
+            os.environ.pop('HF_ENDPOINT', None)
 
-        except Exception as e:
-            logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to load dataset {dataset_name} (attempt {attempt + 1}/{max_retries})...")
 
-            if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
-            else:
-                logger.error(f"All {max_retries} attempts failed for {dataset_name}")
-                return None
+                if streaming:
+                    dataset = load_dataset(
+                        dataset_name,
+                        dataset_config,
+                        split=split,
+                        streaming=True
+                    )
+                else:
+                    dataset = load_dataset(
+                        dataset_name,
+                        dataset_config,
+                        split=split
+                    )
+
+                logger.info(f"Successfully loaded {dataset_name}!")
+                return dataset
+
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"All {max_retries} attempts failed for {dataset_name}")
+
+        # If all retries with this endpoint failed, try next endpoint
+        if endpoint is None:
+            logger.warning("Default endpoint failed, trying mirror...")
 
     return None
 
