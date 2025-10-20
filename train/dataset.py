@@ -215,9 +215,10 @@ class WikipediaDataset(Dataset):
             return_tensors="pt"
         )
 
+        # Clone tensors to make them resizable for DataLoader collation
         return {
-            "input_ids": encoding["input_ids"].squeeze(0),
-            "attention_mask": encoding["attention_mask"].squeeze(0)
+            "input_ids": encoding["input_ids"].squeeze(0).clone(),
+            "attention_mask": encoding["attention_mask"].squeeze(0).clone()
         }
 
 
@@ -307,9 +308,10 @@ class StreamingWikipediaDataset:
                 return_tensors="pt"
             )
 
+            # Clone tensors to make them resizable for DataLoader collation
             yield {
-                "input_ids": encoding["input_ids"].squeeze(0),
-                "attention_mask": encoding["attention_mask"].squeeze(0)
+                "input_ids": encoding["input_ids"].squeeze(0).clone(),
+                "attention_mask": encoding["attention_mask"].squeeze(0).clone()
             }
 
 
