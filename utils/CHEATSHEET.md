@@ -9,11 +9,13 @@ Quick reference for common utility commands. Run all commands from **project roo
 ### Before Training
 ```bash
 # Quick model test (~10s)
-python utils/quick_test.py
+python tests/quick_test.py
 
 # Full sanity check (~3min)
-python train/sanity.py --test all
+python tests/sanity.py --test all
 ```
+
+**Note:** Test scripts have been moved to `tests/` folder. See `tests/README.md` for details.
 
 ### After Training
 ```bash
@@ -31,25 +33,30 @@ python utils/quickstart_visualization.py --all
 
 ## 📋 Testing Commands
 
+**See `tests/README.md` for full testing documentation**
+
 ### Quick Test (Fast)
 ```bash
 # Basic test - all configs
-python utils/quick_test.py
+python tests/quick_test.py
+
+# Checkpoint loading test
+python tests/test_checkpoint_loading.py
 ```
 
 ### Sanity Check (Comprehensive)
 ```bash
 # All tests
-python train/sanity.py --test all
+python tests/sanity.py --test all
 
 # Individual tests
-python train/sanity.py --test m0          # Model only
-python train/sanity.py --test m1          # Data only
-python train/sanity.py --test m2          # Training only
+python tests/sanity.py --test m0          # Model only
+python tests/sanity.py --test m1          # Data only
+python tests/sanity.py --test m2          # Training only
 
 # Different config
-python train/sanity.py --test all --config tiny
-python train/sanity.py --test all --config nano
+python tests/sanity.py --test all --config tiny
+python tests/sanity.py --test all --config nano
 ```
 
 ---
@@ -94,16 +101,16 @@ python utils/quickstart_visualization.py --all --base-dir custom_experiments
 ### Pre-Commit Checks
 ```bash
 # Quick validation before commit
-python utils/quick_test.py && git add . && git commit -m "your message"
+python tests/quick_test.py && git add . && git commit -m "your message"
 
 # Full validation (slower)
-python train/sanity.py --test all && git add . && git commit -m "your message"
+python tests/sanity.py --test all && git add . && git commit -m "your message"
 ```
 
 ### Training Pipeline
 ```bash
 # Test → Train → Visualize
-python utils/quick_test.py && \
+python tests/quick_test.py && \
 sbatch scripts/submit_training.sh && \
 echo "Training submitted!"
 
@@ -114,10 +121,10 @@ python utils/quickstart_visualization.py experiments/latest_experiment
 ### Debugging
 ```bash
 # Quick model check
-python utils/quick_test.py
+python tests/quick_test.py
 
 # Check data loading
-python train/sanity.py --test m1
+python tests/sanity.py --test m1
 
 # Mini training run (local)
 python train_distilgpt2.py \
@@ -137,7 +144,7 @@ python train_distilgpt2.py \
 
 ### 1. Validate Changes
 ```bash
-python utils/quick_test.py
+python tests/quick_test.py
 ```
 
 ### 2. Check Training Progress
@@ -179,9 +186,10 @@ python utils/quickstart_visualization.py experiments/distilgpt2_*
 
 | Script | Location | Purpose |
 |--------|----------|---------|
-| `quick_test.py` | `utils/` | Fast model validation |
+| `quick_test.py` | `tests/` | Fast model validation |
+| `sanity.py` | `tests/` | Comprehensive testing |
+| `test_checkpoint_loading.py` | `tests/` | Checkpoint save/load test |
 | `quickstart_visualization.py` | `utils/` | Experiment visualization |
-| `sanity.py` | `train/` | Comprehensive testing |
 | `sanity_run.sh` | `scripts/` | SLURM sanity check |
 | Training scripts | `scripts/` | SLURM job submission |
 
@@ -194,10 +202,11 @@ Always run from project root:
 ```bash
 # ✅ Correct
 cd /path/to/Arbitrary\ Probability\ Model
-python utils/quick_test.py
+python tests/quick_test.py
+python utils/quickstart_visualization.py
 
 # ❌ Wrong
-cd utils
+cd tests
 python quick_test.py
 ```
 
@@ -207,8 +216,8 @@ python quick_test.py
 python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
 
 # Force CPU for testing
-python utils/quick_test.py  # Uses CPU automatically
-python train/sanity.py --test all  # Detects device automatically
+python tests/quick_test.py  # Uses CPU automatically
+python tests/sanity.py --test all  # Detects device automatically
 ```
 
 ### Dataset Loading Fails
@@ -217,7 +226,7 @@ python train/sanity.py --test all  # Detects device automatically
 ping huggingface.co
 
 # Try with smaller dataset
-python train/sanity.py --test m1  # Uses tiny sample
+python tests/sanity.py --test m1  # Uses tiny sample
 
 # Check cache
 ls ~/.cache/huggingface/datasets/
@@ -237,7 +246,7 @@ cat experiments/your_exp_name/logs/metrics.csv | head
 ## 🔗 Quick Links
 
 - [Full Utils Documentation](README.md)
-- [Sanity Check Details](../train/sanity.py)
+- [Testing Documentation](../tests/README.md)
 - [SLURM Scripts](../scripts/)
 - [Visualization Library](../visualization/)
 

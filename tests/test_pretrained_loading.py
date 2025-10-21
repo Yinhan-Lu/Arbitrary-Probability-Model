@@ -5,11 +5,13 @@ Tests:
 1. Loading from HuggingFace (e.g., distilgpt2, gpt2)
 2. Vocabulary extension with [M] token
 3. Model initialization and parameter counts
+
+Run from project root: python tests/test_pretrained_loading.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 from model.config import get_config

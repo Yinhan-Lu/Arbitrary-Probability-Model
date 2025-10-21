@@ -7,11 +7,13 @@ Quick-access utility scripts for testing, visualization, and development workflo
 ## 📋 Overview
 
 The `utils/` folder contains standalone scripts for common development tasks:
-- **Testing:** Quick sanity checks and model validation
 - **Visualization:** Plotting training curves and experiment comparisons
 - **Debugging:** Fast iteration scripts for development
+- **Analysis:** Experiment summaries and comparisons
 
 These are **convenience wrappers** - they don't contain core logic (which lives in `model/`, `train/`, etc.), but provide easy entry points for common tasks.
+
+**Note:** Test scripts have been moved to `tests/` folder. See `tests/README.md` for testing utilities.
 
 ---
 
@@ -20,7 +22,7 @@ These are **convenience wrappers** - they don't contain core logic (which lives 
 ```
 utils/
 ├── README.md                      # This file
-├── quick_test.py                  # Fast model instantiation test
+├── CHEATSHEET.md                  # Quick command reference
 ├── quickstart_visualization.py    # Experiment visualization
 └── (future utilities...)
 ```
@@ -29,47 +31,7 @@ utils/
 
 ## 🚀 Available Utilities
 
-### 1. `quick_test.py` - Model Quick Test
-
-**Purpose:** Rapidly verify GPT-2 implementation works correctly
-
-**What it tests:**
-- ✅ Model instantiation for all configs (nano, tiny, distilgpt2)
-- ✅ Forward pass with default causal mask
-- ✅ Forward pass with custom attention mask
-- ✅ Loss computation
-- ✅ All configurations load successfully
-
-**Usage:**
-```bash
-# Run from project root
-python utils/quick_test.py
-```
-
-**Expected output:**
-```
-======================================================================
-GPT-2 Implementation Quick Test
-======================================================================
-
-1. Available Configurations:
-----------------------------------------------------------------------
-...
-
-✓ ALL TESTS PASSED!
-```
-
-**When to use:**
-- After making changes to model architecture
-- Before committing code changes
-- Quick sanity check after pulling updates
-- ~10 seconds runtime
-
-**Related:** For more comprehensive testing, see `train/sanity.py`
-
----
-
-### 2. `quickstart_visualization.py` - Experiment Visualization
+### 1. `quickstart_visualization.py` - Experiment Visualization
 
 **Purpose:** Visualize and compare training experiments
 

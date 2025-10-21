@@ -2,11 +2,13 @@
 Test script for checkpoint loading and resume functionality
 
 Tests loading from local checkpoints without HuggingFace dependency
+
+Run from project root: python tests/test_checkpoint_loading.py
 """
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 from model.config import get_config

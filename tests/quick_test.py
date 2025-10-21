@@ -2,7 +2,7 @@
 Quick test to verify the GPT-2 implementation works
 Tests model instantiation and forward pass
 
-Run from project root: python utils/quick_test.py
+Run from project root: python tests/quick_test.py
 """
 
 import sys
