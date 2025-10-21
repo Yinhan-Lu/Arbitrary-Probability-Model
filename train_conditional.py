@@ -103,6 +103,10 @@ class ConditionalTrainer:
         # Create model
         self.model = GPT2Model(self.config).to(self.device)
 
+        # Load pretrained weights if specified
+        if self.args.pretrained_model_path:
+            self._load_pretrained_weights(self.args.pretrained_model_path)
+
         # Resize embeddings to include new tokens
         self.model = self.token_manager.resize_model_embeddings(self.model)
 
@@ -262,6 +266,105 @@ class ConditionalTrainer:
         # Save final model
         self._save_checkpoint("final_model")
 
+    def _load_pretrained_weights(self, pretrained_path):
+        """
+        Load pretrained weights from HuggingFace or local checkpoint
+
+        Args:
+            pretrained_path: Either HuggingFace model name (e.g., 'gpt2', 'distilgpt2')
+                           or path to local checkpoint file
+        """
+        logger.info(f"Loading pretrained weights from: {pretrained_path}")
+
+        # Check if it's a HuggingFace model name or local path
+        if pretrained_path in ['gpt2', 'distilgpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl']:
+            # Load from HuggingFace
+            self._load_from_huggingface(pretrained_path)
+        else:
+            # Load from local checkpoint
+            self._load_from_checkpoint(pretrained_path)
+
+    def _load_from_huggingface(self, model_name):
+        """Load pretrained weights from HuggingFace transformers"""
+        from transformers import GPT2LMHeadModel
+
+        logger.info(f"Loading HuggingFace model: {model_name}")
+        hf_model = GPT2LMHeadModel.from_pretrained(model_name)
+        hf_state_dict = hf_model.state_dict()
+
+        # Map HuggingFace state dict to our model
+        our_state_dict = {}
+
+        # Mapping table: HuggingFace -> Our model
+        key_mapping = {
+            'transformer.wte.weight': 'wte.weight',
+            'transformer.wpe.weight': 'wpe.weight',
+            'transformer.ln_f.weight': 'ln_f.weight',
+            'transformer.ln_f.bias': 'ln_f.bias',
+            'lm_head.weight': 'lm_head.weight',
+        }
+
+        # Map transformer blocks
+        for i in range(self.config.n_layer):
+            # Attention
+            key_mapping[f'transformer.h.{i}.ln_1.weight'] = f'blocks.{i}.ln_1.weight'
+            key_mapping[f'transformer.h.{i}.ln_1.bias'] = f'blocks.{i}.ln_1.bias'
+            key_mapping[f'transformer.h.{i}.attn.c_attn.weight'] = f'blocks.{i}.attn.c_attn.weight'
+            key_mapping[f'transformer.h.{i}.attn.c_attn.bias'] = f'blocks.{i}.attn.c_attn.bias'
+            key_mapping[f'transformer.h.{i}.attn.c_proj.weight'] = f'blocks.{i}.attn.c_proj.weight'
+            key_mapping[f'transformer.h.{i}.attn.c_proj.bias'] = f'blocks.{i}.attn.c_proj.bias'
+
+            # MLP
+            key_mapping[f'transformer.h.{i}.ln_2.weight'] = f'blocks.{i}.ln_2.weight'
+            key_mapping[f'transformer.h.{i}.ln_2.bias'] = f'blocks.{i}.ln_2.bias'
+            key_mapping[f'transformer.h.{i}.mlp.c_fc.weight'] = f'blocks.{i}.mlp.c_fc.weight'
+            key_mapping[f'transformer.h.{i}.mlp.c_fc.bias'] = f'blocks.{i}.mlp.c_fc.bias'
+            key_mapping[f'transformer.h.{i}.mlp.c_proj.weight'] = f'blocks.{i}.mlp.c_proj.weight'
+            key_mapping[f'transformer.h.{i}.mlp.c_proj.bias'] = f'blocks.{i}.mlp.c_proj.bias'
+
+        # Apply mapping
+        for hf_key, our_key in key_mapping.items():
+            if hf_key in hf_state_dict:
+                our_state_dict[our_key] = hf_state_dict[hf_key]
+
+        # Load mapped weights (strict=False because vocab size will be different)
+        missing_keys, unexpected_keys = self.model.load_state_dict(our_state_dict, strict=False)
+
+        logger.info(f"✓ Loaded pretrained weights from {model_name}")
+        logger.info(f"  Missing keys: {len(missing_keys)} (expected if vocab size differs)")
+        logger.info(f"  Unexpected keys: {len(unexpected_keys)}")
+
+        if len(missing_keys) > 0:
+            logger.debug(f"  Missing: {missing_keys[:5]}...")  # Show first 5
+        if len(unexpected_keys) > 0:
+            logger.debug(f"  Unexpected: {unexpected_keys[:5]}...")
+
+    def _load_from_checkpoint(self, checkpoint_path):
+        """Load from local checkpoint file"""
+        logger.info(f"Loading checkpoint from: {checkpoint_path}")
+
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+
+        # Load model state
+        self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+
+        # Optionally restore training state
+        if self.args.resume_training:
+            if "optimizer_state_dict" in checkpoint:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            if "scheduler_state_dict" in checkpoint:
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            if "epoch" in checkpoint:
+                self.epoch = checkpoint["epoch"]
+            if "global_step" in checkpoint:
+                self.global_step = checkpoint["global_step"]
+            if "best_val_loss" in checkpoint:
+                self.best_val_loss = checkpoint["best_val_loss"]
+
+            logger.info(f"✓ Resumed training from epoch {self.epoch}, step {self.global_step}")
+        else:
+            logger.info(f"✓ Loaded model weights only (not resuming training state)")
+
     def _save_checkpoint(self, name):
         """Save model checkpoint"""
         checkpoint_path = self.checkpoint_dir / f"{name}.pt"
@@ -286,6 +389,10 @@ def parse_args():
     # Model arguments
     parser.add_argument("--model_config", type=str, default="distilgpt2",
                         help="Model configuration")
+    parser.add_argument("--pretrained_model_path", type=str, default=None,
+                        help="Path to pretrained model or HuggingFace model name (e.g., 'gpt2', 'distilgpt2')")
+    parser.add_argument("--resume_training", action="store_true",
+                        help="Resume training state (optimizer, scheduler, epoch) from checkpoint")
 
     # Data arguments
     parser.add_argument("--num_train_samples", type=int, default=10000,
