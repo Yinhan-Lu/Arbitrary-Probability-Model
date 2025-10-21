@@ -1,7 +1,15 @@
 """
 Quick test to verify the GPT-2 implementation works
 Tests model instantiation and forward pass
+
+Run from project root: python utils/quick_test.py
 """
+
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 from model.config import get_config, print_config_summary

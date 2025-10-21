@@ -174,3 +174,5 @@ coverage.xml
 # Project-specific
 docs/
 .claude/
+.project_memory.md
+implementation_record/
