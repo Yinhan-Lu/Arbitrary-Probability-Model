@@ -147,8 +147,12 @@ class Trainer:
             input_ids = batch["input_ids"].to(self.device)
             attention_mask = batch["attention_mask"].to(self.device)
 
+            # Prepare labels: set padding tokens to -100 so they're ignored in loss
+            labels = input_ids.clone()
+            labels[labels == 50256] = -100  # 50256 is GPT-2's pad_token_id
+
             # Forward pass
-            logits, loss = self.model(input_ids, labels=input_ids)
+            logits, loss = self.model(input_ids, labels=labels)
 
             # Backward pass
             self.optimizer.zero_grad()
@@ -220,7 +224,11 @@ class Trainer:
             input_ids = batch["input_ids"].to(self.device)
             attention_mask = batch["attention_mask"].to(self.device)
 
-            logits, loss = self.model(input_ids, labels=input_ids)
+            # Prepare labels: set padding tokens to -100 so they're ignored in loss
+            labels = input_ids.clone()
+            labels[labels == 50256] = -100  # 50256 is GPT-2's pad_token_id
+
+            logits, loss = self.model(input_ids, labels=labels)
 
             val_loss += loss.item()
             num_batches += 1

@@ -176,7 +176,10 @@ def test_training_loop(config_name="tiny", num_train_samples=50, num_val_samples
     with torch.no_grad():
         batch = next(iter(train_loader))
         input_ids = batch["input_ids"].to(device)
-        _, initial_loss = model(input_ids, labels=input_ids)
+        # Prepare labels: set padding tokens to -100
+        labels = input_ids.clone()
+        labels[labels == 50256] = -100
+        _, initial_loss = model(input_ids, labels=labels)
         initial_loss = initial_loss.item()
         logger.info(f"Initial loss: {initial_loss:.4f}")
 
@@ -196,7 +199,10 @@ def test_training_loop(config_name="tiny", num_train_samples=50, num_val_samples
     with torch.no_grad():
         batch = next(iter(train_loader))
         input_ids = batch["input_ids"].to(device)
-        _, final_loss = model(input_ids, labels=input_ids)
+        # Prepare labels: set padding tokens to -100
+        labels = input_ids.clone()
+        labels[labels == 50256] = -100
+        _, final_loss = model(input_ids, labels=labels)
         final_loss = final_loss.item()
         logger.info(f"Final loss: {final_loss:.4f}")
 

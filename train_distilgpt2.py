@@ -30,7 +30,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast
+from torch.cuda.amp import GradScaler
 
 # Setup logging first (before optional imports)
 logging.basicConfig(
@@ -241,13 +242,17 @@ class ComprehensiveTrainer:
         """Single training step"""
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
-
+        
+        # Prepare labels: set padding tokens to -100 so they're ignored in loss
+        labels = input_ids.clone()
+        labels[labels == 50256] = -100  # 50256 is GPT-2's pad_token_id
+        
         if self.use_amp:
-            with autocast():
-                logits, loss = self.model(input_ids, labels=input_ids)
+            with autocast('cuda'):
+                logits, loss = self.model(input_ids, labels=labels)
                 loss = loss / self.args.gradient_accumulation_steps
         else:
-            logits, loss = self.model(input_ids, labels=input_ids)
+            logits, loss = self.model(input_ids, labels=labels)
             loss = loss / self.args.gradient_accumulation_steps
 
         # Backward pass
@@ -272,12 +277,16 @@ class ComprehensiveTrainer:
             input_ids = batch["input_ids"].to(self.device)
             attention_mask = batch["attention_mask"].to(self.device)
 
-            logits, loss = self.model(input_ids, labels=input_ids)
+            # Prepare labels: set padding tokens to -100 so they're ignored in loss
+            labels = input_ids.clone()
+            labels[labels == 50256] = -100  # 50256 is GPT-2's pad_token_id
+            
+            logits, loss = self.model(input_ids, labels=labels)
 
             total_loss += loss.item()
             total_tokens += input_ids.numel()
             num_batches += 1
-
+            
             # Limit evaluation batches if specified
             if self.args.max_eval_batches > 0 and num_batches >= self.args.max_eval_batches:
                 break
@@ -346,7 +355,9 @@ class ComprehensiveTrainer:
 
                     # Logging
                     if self.global_step % self.args.logging_steps == 0:
-                        avg_loss = running_loss / self.args.logging_steps
+                        # Fix: Account for gradient accumulation when computing average loss
+                        # We accumulate loss from (logging_steps * gradient_accumulation_steps) batches
+                        avg_loss = running_loss / (self.args.logging_steps * self.args.gradient_accumulation_steps)
                         perplexity = torch.exp(torch.tensor(avg_loss)).item()
                         lr = self.optimizer.param_groups[0]["lr"]
                         elapsed = time.time() - step_start_time
