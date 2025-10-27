@@ -96,7 +96,8 @@ class WikipediaDataset(Dataset):
         streaming=False,
         num_samples=None,
         dataset_name="wikipedia",
-        dataset_config="20220301.en"
+        dataset_config="20220301.en",
+        primary_dataset_only=False
     ):
         """
         Args:
@@ -107,6 +108,7 @@ class WikipediaDataset(Dataset):
             num_samples: Number of samples to use (None for all)
             dataset_name: Hugging Face dataset name
             dataset_config: Dataset configuration/version
+            primary_dataset_only: If True, only use specified dataset without fallback
         """
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -125,8 +127,8 @@ class WikipediaDataset(Dataset):
             streaming=streaming
         )
 
-        # If primary dataset failed, try fallback options
-        if self.dataset is None:
+        # If primary dataset failed, try fallback options (only if allowed)
+        if self.dataset is None and not primary_dataset_only:
             logger.warning("Primary dataset failed after retries. Trying fallback options...")
 
             # Fallback 1: Try WikiText-103 (larger, more robust)
@@ -141,7 +143,7 @@ class WikipediaDataset(Dataset):
             )
 
         # Fallback 2: Try WikiText-2 (smallest, most reliable)
-        if self.dataset is None:
+        if self.dataset is None and not primary_dataset_only:
             logger.warning("WikiText-103 also failed. Trying WikiText-2...")
             self.dataset = load_dataset_with_retry(
                 dataset_name="wikitext",
@@ -241,7 +243,8 @@ class StreamingWikipediaDataset:
         split="train",
         buffer_size=10000,
         dataset_name="wikipedia",
-        dataset_config="20220301.en"
+        dataset_config="20220301.en",
+        primary_dataset_only=False
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -259,8 +262,8 @@ class StreamingWikipediaDataset:
             streaming=True
         )
 
-        # Fallback to WikiText-103
-        if self.dataset is None:
+        # Fallback to WikiText-103 (only if allowed)
+        if self.dataset is None and not primary_dataset_only:
             logger.warning("Primary dataset failed. Trying WikiText-103...")
             self.dataset = load_dataset_with_retry(
                 dataset_name="wikitext",
@@ -271,8 +274,8 @@ class StreamingWikipediaDataset:
                 streaming=True
             )
 
-        # Fallback to WikiText-2
-        if self.dataset is None:
+        # Fallback to WikiText-2 (only if allowed)
+        if self.dataset is None and not primary_dataset_only:
             logger.warning("WikiText-103 failed. Trying WikiText-2...")
             self.dataset = load_dataset_with_retry(
                 dataset_name="wikitext",
@@ -327,7 +330,10 @@ def get_dataloader(
     batch_size=8,
     num_workers=4,
     streaming=False,
-    num_samples=None
+    num_samples=None,
+    dataset_name="wikipedia",
+    dataset_config="20220301.en",
+    primary_dataset_only=False
 ):
     """
     Create a DataLoader for Wikipedia dataset
@@ -339,6 +345,9 @@ def get_dataloader(
         num_workers: Number of data loading workers
         streaming: Whether to use streaming mode
         num_samples: Number of samples to use (None for all)
+        dataset_name: Hugging Face dataset name
+        dataset_config: Dataset configuration/version
+        primary_dataset_only: If True, only use specified dataset without fallback
 
     Returns:
         DataLoader instance
@@ -356,7 +365,10 @@ def get_dataloader(
         dataset = StreamingWikipediaDataset(
             tokenizer=tokenizer,
             max_length=config.max_seq_len,
-            split=split
+            split=split,
+            dataset_name=dataset_name,
+            dataset_config=dataset_config,
+            primary_dataset_only=primary_dataset_only
         )
 
         # For streaming, we use a different approach
@@ -377,7 +389,10 @@ def get_dataloader(
             max_length=config.max_seq_len,
             split=split,
             streaming=False,
-            num_samples=num_samples
+            num_samples=num_samples,
+            dataset_name=dataset_name,
+            dataset_config=dataset_config,
+            primary_dataset_only=primary_dataset_only
         )
 
         dataloader = DataLoader(

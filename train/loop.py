@@ -103,8 +103,8 @@ class Trainer:
         # Logging setup
         self.log_dir = Path(log_dir)
         self.checkpoint_dir = Path(checkpoint_dir)
-        self.log_dir.mkdir(exist_ok=True)
-        self.checkpoint_dir.mkdir(exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         self.log_file = self.log_dir / "training_log.csv"
         self._init_log_file()
