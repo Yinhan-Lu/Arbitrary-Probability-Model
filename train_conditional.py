@@ -117,9 +117,30 @@ class ConditionalTrainer:
         """Setup data loaders"""
         logger.info("Loading dataset...")
 
+        # Calculate effective max_length for dataset to account for prefix conditioning overhead
+        # Augmented sequence length: N_cond + 1 (BOS) + seq_len
+        # Where N_cond ≈ conditioning_ratio * seq_len
+        # So: augmented_length ≈ (1 + conditioning_ratio) * seq_len + 1
+        # We need: augmented_length ≤ max_seq_len
+        # Therefore: seq_len ≤ (max_seq_len - 1) / (1 + conditioning_ratio)
+
+        augmentation_factor = 1.0 + self.args.conditioning_ratio
+        effective_max_length = int((self.config.max_seq_len - 1) / augmentation_factor)
+
+        logger.info(f"Adjusting dataset max_length for prefix conditioning:")
+        logger.info(f"  Model max_seq_len: {self.config.max_seq_len}")
+        logger.info(f"  Conditioning ratio: {self.args.conditioning_ratio}")
+        logger.info(f"  Augmentation factor: {augmentation_factor:.2f}x")
+        logger.info(f"  Dataset effective max_length: {effective_max_length}")
+
+        # Create a modified config for dataset with adjusted max_seq_len
+        from copy import copy
+        dataset_config = copy(self.config)
+        dataset_config.max_seq_len = effective_max_length
+
         # Note: Using standard dataloader, will augment in training loop
         self.train_loader = get_dataloader(
-            config=self.config,
+            config=dataset_config,
             split="train",
             batch_size=self.args.batch_size,
             num_workers=self.args.num_workers,
@@ -129,7 +150,7 @@ class ConditionalTrainer:
 
         if self.args.do_eval:
             self.val_loader = get_dataloader(
-                config=self.config,
+                config=dataset_config,
                 split="validation",
                 batch_size=self.args.eval_batch_size,
                 num_workers=self.args.num_workers,
@@ -146,7 +167,11 @@ class ConditionalTrainer:
             conditioning_ratio=self.args.conditioning_ratio,
             evaluation_ratio=self.args.evaluation_ratio,
             min_conditioning=self.args.min_conditioning,
-            min_evaluation=self.args.min_evaluation
+            min_evaluation=self.args.min_evaluation,
+            conditioning_sampling=self.args.conditioning_sampling,
+            evaluation_sampling=self.args.evaluation_sampling,
+            max_cond_blocks=self.args.max_cond_blocks,
+            max_eval_blocks=self.args.max_eval_blocks
         )
 
     def _setup_optimizer(self):
@@ -191,11 +216,12 @@ class ConditionalTrainer:
         # Apply conditional augmentation
         aug_batch = self.augmenter.augment_batch(input_ids, device=self.device)
 
-        # Forward pass with custom attention mask
+        # Forward pass with custom attention mask and position ids
         logits, loss = self.model(
             input_ids=aug_batch["input_ids"],
             attention_mask=aug_batch["attention_mask"],
-            labels=aug_batch["labels"]
+            labels=aug_batch["labels"],
+            position_ids=aug_batch["position_ids"]
         )
 
         # Scale loss for gradient accumulation
@@ -432,6 +458,16 @@ def parse_args():
                         help="Minimum number of conditioning tokens")
     parser.add_argument("--min_evaluation", type=int, default=1,
                         help="Minimum number of evaluation tokens")
+    parser.add_argument("--conditioning_sampling", type=str, default="blockwise",
+                        choices=["random", "blockwise"],
+                        help="Sampling mode for conditioning set: 'random' or 'blockwise'")
+    parser.add_argument("--evaluation_sampling", type=str, default="blockwise",
+                        choices=["random", "blockwise"],
+                        help="Sampling mode for evaluation set: 'random' or 'blockwise'")
+    parser.add_argument("--max_cond_blocks", type=int, default=3,
+                        help="Maximum number of blocks for conditioning (when blockwise, default: 3)")
+    parser.add_argument("--max_eval_blocks", type=int, default=2,
+                        help="Maximum number of blocks for evaluation (when blockwise, default: 2)")
 
     # Logging arguments
     parser.add_argument("--logging_steps", type=int, default=10)
