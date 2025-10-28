@@ -118,12 +118,15 @@ class TokenManager:
 
         logger.info(f"Resizing embeddings from {old_vocab_size} to {new_vocab_size}")
 
+        # Get device from model
+        device = model.wte.weight.device
+
         # Update config
         model.config.vocab_size = new_vocab_size
 
         # Resize token embeddings
         old_embeddings = model.wte.weight.data
-        new_embeddings = nn.Embedding(new_vocab_size, model.config.n_embd)
+        new_embeddings = nn.Embedding(new_vocab_size, model.config.n_embd).to(device)
 
         # Copy old weights
         new_embeddings.weight.data[:old_vocab_size] = old_embeddings
@@ -137,7 +140,7 @@ class TokenManager:
         model.wte = new_embeddings
 
         # Resize output layer (tied with embeddings)
-        model.lm_head = nn.Linear(model.config.n_embd, new_vocab_size, bias=False)
+        model.lm_head = nn.Linear(model.config.n_embd, new_vocab_size, bias=False).to(device)
         model.lm_head.weight = model.wte.weight  # Weight tying
 
         logger.info(f"Embeddings resized successfully")
