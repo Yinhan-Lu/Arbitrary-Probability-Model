@@ -60,7 +60,7 @@ echo "M0: Testing model instantiation and forward pass..."
 echo "----------------------------------------------------------------------"
 cd "$(dirname "$0")/.." || exit 1
 
-python3 train/sanity.py --test m0 --config tiny || {
+python3 tests/sanity.py --test m0 --config tiny || {
     echo "✗ M0 failed"
     exit 1
 }
@@ -69,7 +69,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "M1: Testing data loading and tokenization..."
 echo "----------------------------------------------------------------------"
-python3 train/sanity.py --test m1 --config tiny || {
+python3 tests/sanity.py --test m1 --config tiny || {
     echo "✗ M1 failed"
     exit 1
 }
@@ -78,7 +78,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "M2: Testing training loop and loss convergence..."
 echo "----------------------------------------------------------------------"
-python3 train/sanity.py --test m2 --config tiny || {
+python3 tests/sanity.py --test m2 --config tiny || {
     echo "✗ M2 failed"
     exit 1
 }
