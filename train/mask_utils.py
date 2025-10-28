@@ -119,6 +119,60 @@ def create_bidirectional_mask(seq_len, device='cpu'):
     return mask
 
 
+def create_prefix_conditional_mask(N_cond, N_seq, device='cpu'):
+    """
+    Create concatenation-based prefix conditioning mask
+
+    This mask supports prefix conditioning where:
+    - Conditioning tokens are placed at the beginning (prefix)
+    - Sequence tokens follow (BOS + body)
+    - Conditioning tokens can attend to all positions
+    - Sequence tokens can attend to all conditioning + causal sequence
+
+    Args:
+        N_cond: Number of conditioning tokens in prefix
+        N_seq: Number of sequence tokens (including BOS)
+        device: Device to create mask on
+
+    Returns:
+        Mask of shape (N_cond + N_seq, N_cond + N_seq)
+        1 = can attend, 0 = cannot attend
+
+    Structure:
+      [Cond][   Seq   ]
+    C [  1  ][   1    ]  <- Cond rows: fully visible
+    S [  1  ][ causal ]  <- Seq rows: cond visible + causal seq
+
+    Example (N_cond=2, N_seq=6):
+         [C  C  S  S  S  S  S  S]
+      C  [1  1  1  1  1  1  1  1]  <- Cond can see all
+      C  [1  1  1  1  1  1  1  1]
+      S  [1  1  1  0  0  0  0  0]  <- Seq can see cond + causal
+      S  [1  1  1  1  0  0  0  0]
+      S  [1  1  1  1  1  0  0  0]
+      S  [1  1  1  1  1  1  0  0]
+      S  [1  1  1  1  1  1  1  0]
+      S  [1  1  1  1  1  1  1  1]
+    """
+    # Cond rows: fully visible (can attend to all conditioning + all sequence)
+    cond_rows = torch.ones(N_cond, N_cond + N_seq, device=device, dtype=torch.uint8)
+
+    # Seq rows: cond visible + causal sequence
+    # All sequence positions can attend to all conditioning positions
+    cond_visible = torch.ones(N_seq, N_cond, device=device, dtype=torch.uint8)
+
+    # Within sequence, apply causal mask
+    causal_mask = torch.tril(torch.ones(N_seq, N_seq, device=device, dtype=torch.uint8))
+
+    # Concatenate cond_visible and causal_mask for sequence rows
+    seq_rows = torch.cat([cond_visible, causal_mask], dim=1)
+
+    # Concatenate cond_rows and seq_rows to form full mask
+    full_mask = torch.cat([cond_rows, seq_rows], dim=0)
+
+    return full_mask
+
+
 def visualize_mask(mask, title="Attention Mask"):
     """
     Print a visual representation of the attention mask

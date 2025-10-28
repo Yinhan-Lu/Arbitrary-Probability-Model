@@ -219,12 +219,14 @@ class GPT2Model(nn.Module):
         """Return the number of parameters in the model"""
         return sum(p.numel() for p in self.parameters())
 
-    def forward(self, input_ids, attention_mask=None, labels=None):
+    def forward(self, input_ids, attention_mask=None, labels=None, position_ids=None):
         """
         Args:
             input_ids: Input token indices of shape (batch_size, seq_len)
             attention_mask: Optional attention mask of shape (batch_size, seq_len, seq_len)
             labels: Optional labels for language modeling loss of shape (batch_size, seq_len)
+            position_ids: Optional custom position indices of shape (batch_size, seq_len) or (seq_len,)
+                         If None, uses sequential positions 0, 1, 2, ..., seq_len-1
 
         Returns:
             logits: Output logits of shape (batch_size, seq_len, vocab_size)
@@ -234,9 +236,17 @@ class GPT2Model(nn.Module):
         assert T <= self.config.max_seq_len, f"Sequence length {T} exceeds maximum {self.config.max_seq_len}"
 
         # Get token and position embeddings
-        pos = torch.arange(0, T, dtype=torch.long, device=input_ids.device).unsqueeze(0)  # (1, T)
+        if position_ids is None:
+            # Default: sequential positions 0, 1, 2, ..., T-1
+            pos = torch.arange(0, T, dtype=torch.long, device=input_ids.device).unsqueeze(0)  # (1, T)
+        else:
+            # Custom positions for prefix conditioning
+            pos = position_ids
+            if pos.dim() == 1:
+                pos = pos.unsqueeze(0)  # (T,) -> (1, T)
+
         tok_emb = self.wte(input_ids)  # (B, T, n_embd)
-        pos_emb = self.wpe(pos)  # (1, T, n_embd)
+        pos_emb = self.wpe(pos)  # (1, T, n_embd) or (B, T, n_embd)
 
         x = self.drop(tok_emb + pos_emb)
 

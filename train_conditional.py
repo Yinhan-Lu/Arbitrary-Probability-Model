@@ -15,6 +15,7 @@ import os
 import sys
 import argparse
 import logging
+import csv
 from pathlib import Path
 from datetime import datetime
 
@@ -77,6 +78,10 @@ class ConditionalTrainer:
         self.global_step = 0
         self.epoch = 0
         self.best_val_loss = float('inf')
+
+        # Initialize CSV logger
+        self.csv_log_file = self.log_dir / "metrics.csv"
+        self._init_csv_logger()
 
     def _setup_model(self):
         """Initialize model with special tokens"""
@@ -272,12 +277,23 @@ class ConditionalTrainer:
                     # Logging
                     if self.global_step % self.args.logging_steps == 0:
                         avg_loss = running_loss / self.args.logging_steps
+                        perplexity = torch.exp(torch.tensor(avg_loss)).item()
                         lr = self.optimizer.param_groups[0]["lr"]
 
                         logger.info(
                             f"Step {self.global_step}/{self.total_steps} | "
-                            f"Loss: {avg_loss:.4f} | LR: {lr:.2e}"
+                            f"Loss: {avg_loss:.4f} | PPL: {perplexity:.2f} | LR: {lr:.2e}"
                         )
+
+                        # Log to CSV
+                        metrics = {
+                            'step': self.global_step,
+                            'epoch': epoch + 1,
+                            'loss': f"{avg_loss:.6f}",
+                            'perplexity': f"{perplexity:.4f}",
+                            'learning_rate': f"{lr:.8f}"
+                        }
+                        self._log_to_csv(metrics)
 
                         running_loss = 0
 
@@ -407,6 +423,30 @@ class ConditionalTrainer:
 
         torch.save(checkpoint, checkpoint_path)
         logger.info(f"Checkpoint saved: {checkpoint_path}")
+
+    def _init_csv_logger(self):
+        """Initialize CSV log file"""
+        with open(self.csv_log_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "step",
+                "epoch",
+                "loss",
+                "perplexity",
+                "learning_rate"
+            ])
+
+    def _log_to_csv(self, metrics):
+        """Log metrics to CSV"""
+        with open(self.csv_log_file, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                metrics.get('step', ''),
+                metrics.get('epoch', ''),
+                metrics.get('loss', ''),
+                metrics.get('perplexity', ''),
+                metrics.get('learning_rate', '')
+            ])
 
 
 def parse_args():

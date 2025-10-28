@@ -37,6 +37,21 @@ TINY_CONFIG = GPT2Config(
 )
 
 
+# Small configuration for GPU training (10 min sessions)
+# Balanced size for quick GPU experiments with meaningful training
+SMALL_CONFIG = GPT2Config(
+    vocab_size=50257,           # Same vocab as GPT-2
+    n_layer=4,                  # 4 layers (between tiny and distilgpt2)
+    n_head=8,                   # 8 attention heads
+    n_embd=512,                 # Medium embedding dimension
+    max_seq_len=512,            # Medium sequence length
+    dropout=0.1,                # Standard dropout rate
+    layer_norm_eps=1e-5,        # Standard layer norm epsilon
+    ffn_mult=4,                 # FFN hidden size = 512 * 4 = 2048
+    activation_function="gelu_new"
+)
+
+
 # Nano configuration - even smaller for debugging
 NANO_CONFIG = GPT2Config(
     vocab_size=50257,
@@ -54,6 +69,7 @@ NANO_CONFIG = GPT2Config(
 # Configuration registry
 CONFIGS = {
     "distilgpt2": DISTILGPT2_CONFIG,
+    "small": SMALL_CONFIG,
     "tiny": TINY_CONFIG,
     "nano": NANO_CONFIG
 }
@@ -64,7 +80,7 @@ def get_config(config_name):
     Get a configuration by name
 
     Args:
-        config_name: One of "distilgpt2", "tiny", "nano"
+        config_name: One of "distilgpt2", "small", "tiny", "nano"
 
     Returns:
         GPT2Config instance
