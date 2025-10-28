@@ -18,6 +18,14 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from train.mask_utils import create_conditional_mask, validate_mask_indices
+from train.blockwise_sampling import (
+    generate_conditioning_set_blockwise,
+    generate_conditioning_evaluation_sets_blockwise,
+    uniform_num_conditioning_distribution,
+    uniform_num_blocks_distribution,
+    uniform_block_sizes_distribution,
+    uniform_num_evaluation_distribution,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,10 +49,14 @@ class ConditionalAugmenter:
         evaluation_ratio=0.3,
         min_conditioning=1,
         min_evaluation=1,
-        include_bos=True
+        include_bos=True,
+        conditioning_sampling='blockwise',
+        evaluation_sampling='blockwise',
+        max_cond_blocks=3,
+        max_eval_blocks=2,
     ):
         """
-        Initialize augmenter
+        Initialize augmenter with flexible sampling modes
 
         Args:
             mask_token_id: Token ID for [M] mask token
@@ -55,6 +67,10 @@ class ConditionalAugmenter:
             min_conditioning: Minimum number of conditioning tokens
             min_evaluation: Minimum number of evaluation tokens
             include_bos: Whether to prepend BOS token
+            conditioning_sampling: Sampling mode for conditioning set - 'blockwise' or 'random'
+            evaluation_sampling: Sampling mode for evaluation set - 'blockwise' or 'random'
+            max_cond_blocks: Maximum blocks for conditioning (when blockwise, default: 3)
+            max_eval_blocks: Maximum blocks for evaluation (when blockwise, default: 2)
         """
         self.mask_token_id = mask_token_id
         self.bos_token_id = bos_token_id
@@ -66,15 +82,30 @@ class ConditionalAugmenter:
         self.min_evaluation = min_evaluation
         self.include_bos = include_bos
 
+        self.conditioning_sampling = conditioning_sampling
+        self.evaluation_sampling = evaluation_sampling
+        self.max_cond_blocks = max_cond_blocks
+        self.max_eval_blocks = max_eval_blocks
+
         logger.info(f"ConditionalAugmenter initialized:")
         logger.info(f"  Mask token ID: {mask_token_id}")
         logger.info(f"  BOS token ID: {bos_token_id}")
         logger.info(f"  Conditioning ratio: {conditioning_ratio}")
         logger.info(f"  Evaluation ratio: {evaluation_ratio}")
+        logger.info(f"  Conditioning sampling: {conditioning_sampling}")
+        if conditioning_sampling == 'blockwise':
+            logger.info(f"    Max cond blocks: {max_cond_blocks}")
+        logger.info(f"  Evaluation sampling: {evaluation_sampling}")
+        if evaluation_sampling == 'blockwise':
+            logger.info(f"    Max eval blocks: {max_eval_blocks}")
 
     def split_indices(self, seq_len):
         """
-        Randomly split sequence indices into conditioning, evaluation, and unknown sets
+        Split sequence indices into conditioning, evaluation, and unknown sets
+
+        Supports flexible sampling modes:
+        - conditioning_sampling: 'blockwise' or 'random'
+        - evaluation_sampling: 'blockwise' or 'random'
 
         Args:
             seq_len: Length of original sequence (without BOS)
@@ -82,6 +113,19 @@ class ConditionalAugmenter:
         Returns:
             Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
         """
+        # If both are blockwise, use the unified blockwise function
+        if self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
+            return generate_conditioning_set_blockwise(
+                seq_len=seq_len,
+                conditioning_ratio=self.conditioning_ratio,
+                evaluation_ratio=self.evaluation_ratio,
+                min_conditioning=self.min_conditioning,
+                min_evaluation=self.min_evaluation,
+                max_cond_blocks=self.max_cond_blocks,
+                max_eval_blocks=self.max_eval_blocks,
+            )
+
+        # Otherwise, use mixed sampling
         indices = list(range(seq_len))
 
         # Determine sizes
@@ -92,18 +136,51 @@ class ConditionalAugmenter:
         num_cond = min(num_cond, seq_len - self.min_evaluation)
         num_eval = min(num_eval, seq_len - num_cond)
 
-        # Randomly sample conditioning indices
-        conditioning_indices = random.sample(indices, num_cond)
+        # Step 1: Sample conditioning set
+        if self.conditioning_sampling == 'blockwise':
+            # Use blockwise for conditioning only
+            conditioning_indices, _, _ = generate_conditioning_set_blockwise(
+                seq_len=seq_len,
+                conditioning_ratio=self.conditioning_ratio,
+                evaluation_ratio=0.0,  # Don't generate eval here
+                min_conditioning=self.min_conditioning,
+                min_evaluation=0,
+                max_cond_blocks=self.max_cond_blocks,
+            )
+        else:  # random
+            conditioning_indices = random.sample(indices, num_cond)
 
-        # Remaining indices form unknown set
-        remaining = [idx for idx in indices if idx not in conditioning_indices]
+        # Step 2: Calculate available positions for evaluation (exclude conditioning)
+        available_positions = [idx for idx in indices if idx not in conditioning_indices]
 
-        # Sample evaluation indices from remaining
-        num_eval = min(num_eval, len(remaining))
-        evaluation_indices = random.sample(remaining, num_eval)
+        # Step 3: Sample evaluation set from available positions
+        if self.evaluation_sampling == 'blockwise':
+            # Use blockwise for evaluation from available positions
+            if len(available_positions) > 0:
+                # Create a temporary sequence with only available positions
+                eval_seq_len = len(available_positions)
+                target_eval = min(num_eval, eval_seq_len)
+                eval_ratio = target_eval / eval_seq_len if eval_seq_len > 0 else 0.3
 
-        # Unknown set includes evaluation + other unknowns
-        unknown_indices = [idx for idx in indices if idx not in conditioning_indices]
+                # Sample from available positions using blockwise
+                _, eval_indices_in_available, _ = generate_conditioning_set_blockwise(
+                    seq_len=eval_seq_len,
+                    conditioning_ratio=0.0,  # No conditioning needed
+                    evaluation_ratio=eval_ratio,
+                    min_conditioning=0,
+                    min_evaluation=max(1, target_eval),
+                    max_cond_blocks=1,
+                    max_eval_blocks=self.max_eval_blocks,
+                )
+                # Map back to original indices
+                evaluation_indices = sorted([available_positions[i] for i in eval_indices_in_available])
+            else:
+                evaluation_indices = []
+        else:  # random
+            evaluation_indices = random.sample(available_positions, min(num_eval, len(available_positions)))
+
+        # Step 4: Unknown set = all non-conditioning positions
+        unknown_indices = available_positions
 
         # Validate the split
         validate_mask_indices(seq_len, conditioning_indices, evaluation_indices, unknown_indices)
@@ -112,7 +189,13 @@ class ConditionalAugmenter:
 
     def augment_sequence(self, input_ids, device='cpu'):
         """
-        Augment a single sequence for conditional training
+        Augment sequence using concatenation-based prefix conditioning
+
+        Sequence structure: [Cond tokens] + [BOS + Body tokens]
+        - Conditioning tokens moved to prefix (use original positions)
+        - BOS token separates prefix from body
+        - Body: original sequence (only mask unknown set, keep cond + eval)
+        - Position encodings: Cond uses original positions, BOS uses 0, Body uses 1-seq_len
 
         Args:
             input_ids: Original sequence tensor of shape (seq_len,)
@@ -120,69 +203,85 @@ class ConditionalAugmenter:
 
         Returns:
             Dictionary containing:
-            - aug_input_ids: Augmented input with BOS and [M] masks
-            - attention_mask: Custom attention mask
-            - labels: Labels for loss computation (-100 for non-evaluation positions)
+            - aug_input_ids: Augmented sequence [Cond] + [BOS + Body]
+            - position_ids: Custom position encodings
+            - attention_mask: Prefix conditional mask
+            - labels: Labels for loss (only evaluation positions)
             - conditioning_indices: Original conditioning indices
             - evaluation_indices: Original evaluation indices
+            - unknown_indices: Original unknown indices
+            - N_cond: Number of conditioning tokens
+            - N_seq: Number of sequence tokens (BOS + body)
         """
         seq_len = input_ids.size(0)
 
-        # Split into sets
+        # Step 1: Get three sets (conditioning, evaluation, unknown)
         cond_idx, eval_idx, unknown_idx = self.split_indices(seq_len)
 
-        # Create augmented input
-        aug_input_ids = []
+        # Step 2: Build conditioning tokens (prefix)
+        cond_tokens = []
+        cond_position_ids = []
+        for idx in sorted(cond_idx):
+            cond_tokens.append(input_ids[idx].item())
+            cond_position_ids.append(idx + 1)  # Original positions start from 1
+        N_cond = len(cond_tokens)
 
-        # Add BOS if requested
-        if self.include_bos:
-            aug_input_ids.append(self.bos_token_id)
+        # Step 3: Build sequence tokens (BOS + Body)
+        seq_tokens = [self.bos_token_id]  # BOS at front
+        seq_position_ids = [0]  # BOS uses position 0
 
-        # Add tokens (original or [M])
+        # Body tokens (only mask unknown set, keep cond + eval)
         for i in range(seq_len):
             if i in unknown_idx:
-                # Unknown positions: replace with [M]
-                aug_input_ids.append(self.mask_token_id)
+                seq_tokens.append(self.mask_token_id)  # Mask unknown
             else:
-                # Conditioning positions: keep original token
-                aug_input_ids.append(input_ids[i].item())
+                seq_tokens.append(input_ids[i].item())  # Keep cond + eval
+            seq_position_ids.append(i + 1)  # Original positions 1, 2, 3, ...
+        N_seq = len(seq_tokens)
 
-        aug_input_ids = torch.tensor(aug_input_ids, dtype=torch.long, device=device)
-
-        # Create custom attention mask
-        aug_seq_len = aug_input_ids.size(0)
-        attention_mask = create_conditional_mask(
-            seq_len=aug_seq_len,
-            conditioning_indices=cond_idx,
-            unknown_indices=unknown_idx,
-            device=device,
-            include_bos=self.include_bos
+        # Step 4: Concatenate [Cond] + [Seq]
+        aug_input_ids = torch.tensor(
+            cond_tokens + seq_tokens,
+            dtype=torch.long,
+            device=device
+        )
+        position_ids = torch.tensor(
+            cond_position_ids + seq_position_ids,
+            dtype=torch.long,
+            device=device
         )
 
-        # Create labels for loss computation
-        # Initialize with pad_token_id (-100 to ignore)
-        labels = torch.full_like(aug_input_ids, self.pad_token_id)
+        # Step 5: Create attention mask (prefix conditional)
+        from train.mask_utils import create_prefix_conditional_mask
+        attention_mask = create_prefix_conditional_mask(
+            N_cond=N_cond,
+            N_seq=N_seq,
+            device=device
+        )
 
-        # Set labels only for evaluation positions
-        # Labels are for next-token prediction, so we set label[i] = token at original position
+        # Step 6: Create labels (ONLY for evaluation set)
+        labels = torch.full_like(aug_input_ids, self.pad_token_id)  # All -100
+
+        # IMPORTANT: Set labels at position p (not p-1)
+        # Because: shift_logits[p-1] corresponds to shift_labels[p-1] = labels[p]
+        # Example: logits[2] (BOS output) predicts labels[3] (first eval token)
         for eval_pos in eval_idx:
-            if self.include_bos:
-                # Shift by 1 due to BOS
-                label_pos = eval_pos + 1
-            else:
-                label_pos = eval_pos
-
-            # Set label to original token value
-            if label_pos < len(labels):
-                labels[label_pos] = input_ids[eval_pos].item()
+            # eval_pos is original sequence index (0-based)
+            # In new sequence: Cond (N_cond) + BOS (1) + Body (eval_pos)
+            new_pos = N_cond + 1 + eval_pos
+            if new_pos < len(labels):
+                labels[new_pos] = input_ids[eval_pos].item()
 
         return {
             "aug_input_ids": aug_input_ids,
+            "position_ids": position_ids,
             "attention_mask": attention_mask,
             "labels": labels,
             "conditioning_indices": cond_idx,
             "evaluation_indices": eval_idx,
-            "unknown_indices": unknown_idx
+            "unknown_indices": unknown_idx,
+            "N_cond": N_cond,
+            "N_seq": N_seq
         }
 
     def augment_batch(self, input_ids_batch, device='cpu'):
@@ -196,12 +295,14 @@ class ConditionalAugmenter:
         Returns:
             Dictionary containing batched tensors:
             - input_ids: (batch_size, aug_seq_len)
-            - attention_mask: (batch_size, aug_seq_len, aug_seq_len)
+            - position_ids: (batch_size, aug_seq_len) - custom position encodings
+            - attention_mask: (batch_size, 1, aug_seq_len, aug_seq_len)
             - labels: (batch_size, aug_seq_len)
         """
         batch_size = input_ids_batch.size(0)
 
         aug_inputs = []
+        aug_positions = []
         aug_masks = []
         aug_labels = []
 
@@ -209,12 +310,14 @@ class ConditionalAugmenter:
             result = self.augment_sequence(input_ids_batch[i], device=device)
 
             aug_inputs.append(result["aug_input_ids"])
+            aug_positions.append(result["position_ids"])
             aug_masks.append(result["attention_mask"])
             aug_labels.append(result["labels"])
 
         # Stack into batches
         # All sequences should have same length after augmentation
         input_ids = torch.stack(aug_inputs, dim=0)
+        position_ids = torch.stack(aug_positions, dim=0)
         labels = torch.stack(aug_labels, dim=0)
 
         # Attention masks need an extra dimension for broadcasting
@@ -223,6 +326,7 @@ class ConditionalAugmenter:
 
         return {
             "input_ids": input_ids,
+            "position_ids": position_ids,
             "attention_mask": attention_mask,
             "labels": labels
         }
