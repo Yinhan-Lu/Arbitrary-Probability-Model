@@ -4,6 +4,10 @@ Flexible plotting utilities for experiment visualization.
 Provides high-level plotting functions that work with various experiment types.
 """
 
+# Set matplotlib backend for non-GUI environments (cluster/server)
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
