@@ -262,7 +262,7 @@ class GPT2Model(nn.Module):
                 shift_labels.view(-1),
                 ignore_index=-100
             )
-
+        
         return logits, loss
 
 

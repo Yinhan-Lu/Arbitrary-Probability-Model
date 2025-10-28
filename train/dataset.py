@@ -95,9 +95,9 @@ class WikipediaDataset(Dataset):
         split="train",
         streaming=False,
         num_samples=None,
-        dataset_name="wikipedia",
-        dataset_config="20220301.en",
-        primary_dataset_only=False
+        dataset_name="wikitext",
+        dataset_config="wikitext-103-raw-v1",
+        primary_dataset_only=True
     ):
         """
         Args:
@@ -242,9 +242,9 @@ class StreamingWikipediaDataset:
         max_length=1024,
         split="train",
         buffer_size=10000,
-        dataset_name="wikipedia",
-        dataset_config="20220301.en",
-        primary_dataset_only=False
+        dataset_name="wikitext",
+        dataset_config="wikitext-103-raw-v1",
+        primary_dataset_only=True
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -331,9 +331,9 @@ def get_dataloader(
     num_workers=4,
     streaming=False,
     num_samples=None,
-    dataset_name="wikipedia",
-    dataset_config="20220301.en",
-    primary_dataset_only=False
+    dataset_name="wikitext",
+    dataset_config="wikitext-103-raw-v1",
+    primary_dataset_only=True
 ):
     """
     Create a DataLoader for Wikipedia dataset
