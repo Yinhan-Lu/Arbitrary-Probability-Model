@@ -234,6 +234,51 @@ class ConditionalTrainer:
 
         return loss
 
+    @torch.no_grad()
+    def evaluate(self):
+        """Run evaluation on validation set with conditional augmentation"""
+        self.model.eval()
+        total_loss = 0
+        total_tokens = 0
+        num_batches = 0
+
+        logger.info("Running evaluation...")
+
+        for batch in self.val_loader:
+            # Get original input
+            input_ids = batch["input_ids"].to(self.device)
+
+            # Apply conditional augmentation (same as training)
+            aug_batch = self.augmenter.augment_batch(input_ids, device=self.device)
+
+            # Forward pass
+            logits, loss = self.model(
+                input_ids=aug_batch["input_ids"],
+                attention_mask=aug_batch["attention_mask"],
+                labels=aug_batch["labels"],
+                position_ids=aug_batch["position_ids"]
+            )
+
+            total_loss += loss.item()
+            total_tokens += (aug_batch["labels"] != -100).sum().item()
+            num_batches += 1
+
+            # Limit evaluation batches if specified
+            if self.args.max_eval_batches > 0 and num_batches >= self.args.max_eval_batches:
+                break
+
+        avg_loss = total_loss / num_batches
+        perplexity = torch.exp(torch.tensor(avg_loss)).item()
+
+        self.model.train()
+
+        return {
+            "loss": avg_loss,
+            "perplexity": perplexity,
+            "num_batches": num_batches,
+            "total_tokens": total_tokens
+        }
+
     def train(self):
         """Main training loop"""
         logger.info("=" * 80)
@@ -289,13 +334,39 @@ class ConditionalTrainer:
                         metrics = {
                             'step': self.global_step,
                             'epoch': epoch + 1,
-                            'loss': f"{avg_loss:.6f}",
-                            'perplexity': f"{perplexity:.4f}",
-                            'learning_rate': f"{lr:.8f}"
+                            'loss': avg_loss,
+                            'perplexity': perplexity,
+                            'learning_rate': lr
                         }
                         self._log_to_csv(metrics)
 
                         running_loss = 0
+
+                    # Evaluation
+                    if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
+                        eval_results = self.evaluate()
+
+                        logger.info(
+                            f"Evaluation at step {self.global_step} | "
+                            f"Val Loss: {eval_results['loss']:.4f} | "
+                            f"Val PPL: {eval_results['perplexity']:.2f}"
+                        )
+
+                        # Create evaluation metrics entry
+                        eval_metrics = {
+                            'step': self.global_step,
+                            'epoch': epoch + 1,
+                            'val_loss': eval_results["loss"],
+                            'val_perplexity': eval_results["perplexity"],
+                            'learning_rate': self.optimizer.param_groups[0]["lr"]
+                        }
+                        self._log_to_csv(eval_metrics)
+
+                        # Save best model
+                        if eval_results["loss"] < self.best_val_loss:
+                            self.best_val_loss = eval_results["loss"]
+                            self._save_checkpoint("best_model")
+                            logger.info(f"New best model saved! Val Loss: {self.best_val_loss:.4f}")
 
                     # Save checkpoint
                     if self.global_step % self.args.save_steps == 0:
@@ -303,6 +374,8 @@ class ConditionalTrainer:
 
         logger.info("=" * 80)
         logger.info("Training completed!")
+        if self.args.do_eval:
+            logger.info(f"Best validation loss: {self.best_val_loss:.4f}")
         logger.info("=" * 80)
 
         # Save final model
@@ -417,6 +490,7 @@ class ConditionalTrainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
+            "best_val_loss": self.best_val_loss,
             "config": self.config.__dict__,
             "args": vars(self.args)
         }
@@ -431,8 +505,10 @@ class ConditionalTrainer:
             writer.writerow([
                 "step",
                 "epoch",
-                "loss",
-                "perplexity",
+                "train_loss",
+                "train_perplexity",
+                "val_loss",
+                "val_perplexity",
                 "learning_rate"
             ])
 
@@ -443,8 +519,10 @@ class ConditionalTrainer:
             writer.writerow([
                 metrics.get('step', ''),
                 metrics.get('epoch', ''),
-                metrics.get('loss', ''),
-                metrics.get('perplexity', ''),
+                metrics.get('train_loss', ''),
+                metrics.get('train_perplexity', ''),
+                metrics.get('val_loss', ''),
+                metrics.get('val_perplexity', ''),
                 metrics.get('learning_rate', '')
             ])
 
@@ -510,8 +588,14 @@ def parse_args():
                         help="Maximum number of blocks for evaluation (when blockwise, default: 2)")
 
     # Logging arguments
-    parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--logging_steps", type=int, default=10,
+                        help="Log every N steps")
+    parser.add_argument("--eval_steps", type=int, default=500,
+                        help="Evaluate every N steps")
+    parser.add_argument("--save_steps", type=int, default=1000,
+                        help="Save checkpoint every N steps")
+    parser.add_argument("--max_eval_batches", type=int, default=100,
+                        help="Maximum evaluation batches")
     parser.add_argument("--do_eval", action="store_true",
                         help="Run evaluation during training")
 
