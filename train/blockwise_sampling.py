@@ -213,6 +213,11 @@ def _generate_blockwise_set_from_positions(
     if num_items == 0:
         return []
 
+    # Optimization: if selecting all available positions, return them directly
+    # This handles the "no unseen set" case (eval_pct=100%) efficiently
+    if num_items == available_len:
+        return sorted(available_positions)
+
     # Sample number of blocks
     num_blocks = num_blocks_distribution(num_items)
     num_blocks = min(num_blocks, num_items)
