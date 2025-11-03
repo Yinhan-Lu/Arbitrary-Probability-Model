@@ -62,11 +62,11 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
             attention_mask = attention_mask.expand(batch_size, 1, seq_len, seq_len)
 
             # Forward pass
-            outputs = model(
+            # Model returns (logits, loss) tuple
+            logits, _ = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
             )
-            logits = outputs['logits']
 
             # Compute loss on all positions (shift for next-token prediction)
             shift_logits = logits[:, :-1, :].contiguous()
@@ -181,12 +181,13 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                         labels[new_pos] = sample_ids[eval_pos].item()
 
                 # Forward pass
-                outputs = model(
+                # Model returns (logits, loss) tuple
+                logits, _ = model(
                     input_ids=aug_input_ids.unsqueeze(0),
                     position_ids=position_ids.unsqueeze(0),
                     attention_mask=attention_mask,
                 )
-                logits = outputs['logits'].squeeze(0)
+                logits = logits.squeeze(0)
 
                 # Compute loss (with shift)
                 shift_logits = logits[:-1]
@@ -268,12 +269,13 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
                 batch_eval_indices.append(eval_idx)
 
                 # Forward pass for this single sample
-                outputs = model(
+                # Model returns (logits, loss) tuple
+                logits, _ = model(
                     input_ids=result['aug_input_ids'].unsqueeze(0),
                     position_ids=result['position_ids'].unsqueeze(0),
                     attention_mask=result['attention_mask'].unsqueeze(0).unsqueeze(0),
                 )
-                logits = outputs['logits'].squeeze(0)
+                logits = logits.squeeze(0)
                 labels = result['labels']
 
                 # Compute loss (with shift)
