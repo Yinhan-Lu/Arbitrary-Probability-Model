@@ -280,51 +280,6 @@ class ConditionalTrainer:
 
         return loss
 
-    @torch.no_grad()
-    def evaluate(self):
-        """Run evaluation on validation set with conditional augmentation"""
-        self.model.eval()
-        total_loss = 0
-        total_tokens = 0
-        num_batches = 0
-
-        logger.info("Running evaluation...")
-
-        for batch in self.val_loader:
-            # Get original input
-            input_ids = batch["input_ids"].to(self.device)
-
-            # Apply conditional augmentation (same as training)
-            aug_batch = self.augmenter.augment_batch(input_ids, device=self.device)
-
-            # Forward pass
-            logits, loss = self.model(
-                input_ids=aug_batch["input_ids"],
-                attention_mask=aug_batch["attention_mask"],
-                labels=aug_batch["labels"],
-                position_ids=aug_batch["position_ids"]
-            )
-
-            total_loss += loss.item()
-            total_tokens += (aug_batch["labels"] != -100).sum().item()
-            num_batches += 1
-
-            # Limit evaluation batches if specified
-            if self.args.max_eval_batches > 0 and num_batches >= self.args.max_eval_batches:
-                break
-
-        avg_loss = total_loss / num_batches
-        perplexity = torch.exp(torch.tensor(avg_loss)).item()
-
-        self.model.train()
-
-        return {
-            "loss": avg_loss,
-            "perplexity": perplexity,
-            "num_batches": num_batches,
-            "total_tokens": total_tokens
-        }
-
     def train(self):
         """Main training loop"""
         logger.info("=" * 80)
