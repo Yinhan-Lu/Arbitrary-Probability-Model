@@ -181,26 +181,21 @@ class ConditionalTrainer:
             logger.info("Creating augmenter with distribution functions")
             logger.info(f"  Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
             logger.info(f"  Evaluation percentage range: [{self.args.eval_pct_min}, {self.args.eval_pct_max}]")
-            logger.info(f"  Max conditioning blocks: {self.args.max_cond_blocks}")
-            logger.info(f"  Max evaluation blocks: {self.args.max_eval_blocks}")
 
             # Create distribution functions using partial
             num_cond_dist = partial(
                 uniform_num_conditioning_distribution,
                 conditioning_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
             )
-            num_cond_blocks_dist = partial(
-                uniform_num_blocks_distribution,
-                max_blocks=self.args.max_cond_blocks
-            )
+            # Original design: no max_blocks limit
+            num_cond_blocks_dist = uniform_num_blocks_distribution
+
             num_eval_dist = partial(
                 uniform_num_evaluation_distribution,
                 evaluation_percentage_range=(self.args.eval_pct_min, self.args.eval_pct_max)
             )
-            num_eval_blocks_dist = partial(
-                uniform_num_blocks_distribution,
-                max_blocks=self.args.max_eval_blocks
-            )
+            # Original design: no max_blocks limit
+            num_eval_blocks_dist = uniform_num_blocks_distribution
 
             self.augmenter = ConditionalAugmenter(
                 mask_token_id=self.mask_token_id,
@@ -228,8 +223,6 @@ class ConditionalTrainer:
                 min_evaluation=self.args.min_evaluation,
                 conditioning_sampling=self.args.conditioning_sampling,
                 evaluation_sampling=self.args.evaluation_sampling,
-                max_cond_blocks=self.args.max_cond_blocks,
-                max_eval_blocks=self.args.max_eval_blocks
             )
 
     def _setup_optimizer(self):
@@ -689,11 +682,6 @@ def parse_args():
     parser.add_argument("--evaluation_sampling", type=str, default="blockwise",
                         choices=["random", "blockwise"],
                         help="Sampling mode for evaluation set: 'random' or 'blockwise'")
-    parser.add_argument("--max_cond_blocks", type=int, default=3,
-                        help="Maximum number of blocks for conditioning (when blockwise, default: 3)")
-    parser.add_argument("--max_eval_blocks", type=int, default=2,
-                        help="Maximum number of blocks for evaluation (when blockwise, default: 2)")
-
     # Logging arguments
     parser.add_argument("--logging_steps", type=int, default=10,
                         help="Log every N steps")

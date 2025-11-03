@@ -357,23 +357,22 @@ def uniform_num_conditioning_distribution(
     return random.randint(min_cond, max_cond)
 
 
-def uniform_num_blocks_distribution(
-    num_items: int,
-    max_blocks: int = 3
-) -> int:
+def uniform_num_blocks_distribution(num_items: int) -> int:
     """
     Sample number of blocks uniformly.
 
+    Original design: blocks can be anywhere from 1 to num_items.
+    No artificial max_blocks limit.
+
     Args:
         num_items: Number of items to distribute into blocks
-        max_blocks: Maximum number of blocks
 
     Returns:
-        Number of blocks
+        Number of blocks in range [1, num_items]
     """
     if num_items == 0:
         return 1
-    return random.randint(1, min(max_blocks, num_items))
+    return random.randint(1, num_items)
 
 
 def uniform_block_sizes_distribution(
