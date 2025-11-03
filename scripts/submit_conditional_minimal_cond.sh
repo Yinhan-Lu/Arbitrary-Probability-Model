@@ -39,8 +39,8 @@ export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
 # Enable TF32 for faster training on A100
 export NVIDIA_TF32_OVERRIDE=1
 
-# Change to submission directory
-cd $SLURM_SUBMIT_DIR
+# Change to submission directory (project root)
+cd "$SLURM_SUBMIT_DIR" 
 
 # Create logs directory
 mkdir -p logs
@@ -82,7 +82,7 @@ echo "  Max Eval Blocks: 2"
 echo "========================================="
 
 # Run training with distribution-based sampling
-python3 train_conditional.py \
+python3 ./train_conditional.py \
     --model_config $MODEL_CONFIG \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
