@@ -418,9 +418,13 @@ class ConditionalAugmenter:
                 # Pad attention mask (2D matrix)
                 # Original mask shape: (current_len, current_len)
                 # Padded mask shape: (aug_max_len, aug_max_len)
-                # Padded positions cannot attend to anything and cannot be attended to
+                # Convention: 1 = can attend, 0 = cannot attend
+                # Padded rows: can attend to valid content (prevents NaN in softmax)
+                # Padded cols: cannot be attended to by valid content
                 padded_mask = torch.zeros(self.aug_max_len, self.aug_max_len, dtype=aug_masks[i].dtype, device=device)
                 padded_mask[:current_len, :current_len] = aug_masks[i]
+                # Let padded positions attend to all valid content (avoids softmax NaN)
+                padded_mask[current_len:, :current_len] = 1
 
             else:
                 # No padding needed (already at max length)
