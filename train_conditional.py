@@ -38,8 +38,11 @@ from train.blockwise_sampling import (
     uniform_num_blocks_distribution,
     uniform_block_sizes_distribution,
     uniform_num_evaluation_distribution,
+    generate_boundary_conditioning_split,
 )
+from train.evaluation_modes import evaluate_all_modes
 from functools import partial
+import torch.nn.functional as F
 
 logging.basicConfig(
     level=logging.INFO,
@@ -394,29 +397,52 @@ class ConditionalTrainer:
 
                     # Evaluation
                     if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
-                        eval_results = self.evaluate()
-
-                        logger.info(
-                            f"Evaluation at step {self.global_step} | "
-                            f"Val Loss: {eval_results['loss']:.4f} | "
-                            f"Val PPL: {eval_results['perplexity']:.2f}"
+                        eval_results = evaluate_all_modes(
+                            model=self.model,
+                            dataloader=self.val_loader,
+                            device=self.device,
+                            augmenter=self.augmenter,
+                            max_batches=self.args.max_eval_batches
                         )
+
+                        # Log all 5 modes
+                        logger.info(f"=" * 80)
+                        logger.info(f"Evaluation Results (Step {self.global_step})")
+                        logger.info(f"=" * 80)
+                        logger.info(f"Mode 1 (Autoregressive)   : loss={eval_results['mode1_loss']:.4f}, ppl={eval_results['mode1_ppl']:.2f}")
+                        logger.info(f"Mode 2 (Boundary Filling) : loss={eval_results['mode2_loss']:.4f}, ppl={eval_results['mode2_ppl']:.2f}")
+                        logger.info(f"Mode 3 (Training Dist)    : loss={eval_results['mode3_loss']:.4f}, ppl={eval_results['mode3_ppl']:.2f}")
+                        logger.info(f"Mode 4 (Auto on Boundary) : loss={eval_results['mode4_loss']:.4f}, ppl={eval_results['mode4_ppl']:.2f}")
+                        logger.info(f"Mode 5 (Auto on Training) : loss={eval_results['mode5_loss']:.4f}, ppl={eval_results['mode5_ppl']:.2f}")
+                        logger.info(f"-" * 80)
+                        logger.info(f"Comparisons:")
+                        logger.info(f"  Mode 2 vs 4 (Boundary):  Δ={eval_results['mode2_loss'] - eval_results['mode4_loss']:.4f} (negative = conditional better)")
+                        logger.info(f"  Mode 3 vs 5 (Training):  Δ={eval_results['mode3_loss'] - eval_results['mode5_loss']:.4f} (negative = conditional better)")
+                        logger.info(f"=" * 80)
 
                         # Create evaluation metrics entry
                         eval_metrics = {
                             'step': self.global_step,
                             'epoch': epoch + 1,
-                            'val_loss': eval_results["loss"],
-                            'val_perplexity': eval_results["perplexity"],
+                            'mode1_loss': eval_results['mode1_loss'],
+                            'mode1_ppl': eval_results['mode1_ppl'],
+                            'mode2_loss': eval_results['mode2_loss'],
+                            'mode2_ppl': eval_results['mode2_ppl'],
+                            'mode3_loss': eval_results['mode3_loss'],
+                            'mode3_ppl': eval_results['mode3_ppl'],
+                            'mode4_loss': eval_results['mode4_loss'],
+                            'mode4_ppl': eval_results['mode4_ppl'],
+                            'mode5_loss': eval_results['mode5_loss'],
+                            'mode5_ppl': eval_results['mode5_ppl'],
                             'learning_rate': self.optimizer.param_groups[0]["lr"]
                         }
                         self._log_to_csv(eval_metrics)
 
-                        # Save best model
-                        if eval_results["loss"] < self.best_val_loss:
-                            self.best_val_loss = eval_results["loss"]
+                        # Save best model (using Mode 3 loss as criterion)
+                        if eval_results["mode3_loss"] < self.best_val_loss:
+                            self.best_val_loss = eval_results["mode3_loss"]
+                            logger.info(f"New best model saved! Val Loss (Mode 3): {self.best_val_loss:.4f}")
                             self._save_checkpoint("best_model")
-                            logger.info(f"New best model saved! Val Loss: {self.best_val_loss:.4f}")
 
                     # Save checkpoint
                     if self.global_step % self.args.save_steps == 0:
@@ -557,8 +583,16 @@ class ConditionalTrainer:
                 "epoch",
                 "train_loss",
                 "train_perplexity",
-                "val_loss",
-                "val_perplexity",
+                "mode1_loss",
+                "mode1_ppl",
+                "mode2_loss",
+                "mode2_ppl",
+                "mode3_loss",
+                "mode3_ppl",
+                "mode4_loss",
+                "mode4_ppl",
+                "mode5_loss",
+                "mode5_ppl",
                 "learning_rate"
             ])
 
@@ -571,8 +605,16 @@ class ConditionalTrainer:
                 metrics.get('epoch', ''),
                 metrics.get('train_loss', ''),
                 metrics.get('train_perplexity', ''),
-                metrics.get('val_loss', ''),
-                metrics.get('val_perplexity', ''),
+                metrics.get('mode1_loss', ''),
+                metrics.get('mode1_ppl', ''),
+                metrics.get('mode2_loss', ''),
+                metrics.get('mode2_ppl', ''),
+                metrics.get('mode3_loss', ''),
+                metrics.get('mode3_ppl', ''),
+                metrics.get('mode4_loss', ''),
+                metrics.get('mode4_ppl', ''),
+                metrics.get('mode5_loss', ''),
+                metrics.get('mode5_ppl', ''),
                 metrics.get('learning_rate', '')
             ])
 
