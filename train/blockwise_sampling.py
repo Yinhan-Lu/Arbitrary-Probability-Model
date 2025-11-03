@@ -213,6 +213,11 @@ def _generate_blockwise_set_from_positions(
     if num_items == 0:
         return []
 
+    # Optimization: if selecting all available positions, return them directly
+    # This handles the "no unseen set" case (eval_pct=100%) efficiently
+    if num_items == available_len:
+        return sorted(available_positions)
+
     # Sample number of blocks
     num_blocks = num_blocks_distribution(num_items)
     num_blocks = min(num_blocks, num_items)
@@ -357,23 +362,22 @@ def uniform_num_conditioning_distribution(
     return random.randint(min_cond, max_cond)
 
 
-def uniform_num_blocks_distribution(
-    num_items: int,
-    max_blocks: int = 3
-) -> int:
+def uniform_num_blocks_distribution(num_items: int) -> int:
     """
     Sample number of blocks uniformly.
 
+    Original design: blocks can be anywhere from 1 to num_items.
+    No artificial max_blocks limit.
+
     Args:
         num_items: Number of items to distribute into blocks
-        max_blocks: Maximum number of blocks
 
     Returns:
-        Number of blocks
+        Number of blocks in range [1, num_items]
     """
     if num_items == 0:
         return 1
-    return random.randint(1, min(max_blocks, num_items))
+    return random.randint(1, num_items)
 
 
 def uniform_block_sizes_distribution(
@@ -476,6 +480,75 @@ def generate_conditioning_set_blockwise(
         num_eval_blocks_distribution=num_eval_blocks_dist,
         eval_block_sizes_distribution=uniform_block_sizes_distribution,
     )
+
+
+def generate_boundary_conditioning_split(
+    seq_len: int,
+    start_block_range: tuple[int, int] = None,
+    end_block_range: tuple[int, int] = None,
+) -> tuple[list[int], list[int], list[int]]:
+    """
+    Generate boundary-constrained conditioning split for Mode 2 evaluation.
+
+    Conditioning set MUST include start block + end block (exactly 2 blocks).
+    Evaluation set is the continuous middle part.
+
+    Args:
+        seq_len: Sequence length
+        start_block_range: (min_size, max_size) for start block.
+                          Default: (1, seq_len // 3)
+        end_block_range: (min_size, max_size) for end block.
+                        Default: (1, seq_len // 3)
+
+    Returns:
+        Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
+        - conditioning_indices: start block + end block
+        - evaluation_indices: middle part
+        - unknown_indices: same as evaluation_indices (no separate unseen in Mode 2)
+
+    Example:
+        For seq_len=10:
+        - start_block: [0, 1] (size 2)
+        - end_block: [8, 9] (size 2)
+        - conditioning: [0, 1, 8, 9]
+        - evaluation: [2, 3, 4, 5, 6, 7]
+        - unknown: [2, 3, 4, 5, 6, 7]
+    """
+    if seq_len < 3:
+        raise ValueError(f"Sequence too short for boundary split: {seq_len}")
+
+    # Default ranges
+    if start_block_range is None:
+        max_single_block = max(1, seq_len // 3)
+        start_block_range = (1, max_single_block)
+
+    if end_block_range is None:
+        max_single_block = max(1, seq_len // 3)
+        end_block_range = (1, max_single_block)
+
+    # Sample start block size
+    min_start, max_start = start_block_range
+    max_start = min(max_start, seq_len - 2)  # Leave room for end block and middle
+    start_size = random.randint(min_start, max_start)
+
+    # Sample end block size (must leave room for start block and at least 1 middle token)
+    min_end, max_end = end_block_range
+    max_end = min(max_end, seq_len - start_size - 1)  # Leave room for start block and middle
+    if max_end < min_end:
+        max_end = min_end
+    end_size = random.randint(min_end, max_end)
+
+    # Build indices
+    conditioning_indices = list(range(start_size)) + list(range(seq_len - end_size, seq_len))
+    evaluation_indices = list(range(start_size, seq_len - end_size))
+    unknown_indices = evaluation_indices.copy()  # In Mode 2, unknown = evaluation
+
+    # Validate
+    assert len(conditioning_indices) + len(evaluation_indices) == seq_len
+    assert len(evaluation_indices) > 0, "Evaluation set cannot be empty"
+    assert set(conditioning_indices).isdisjoint(set(evaluation_indices))
+
+    return conditioning_indices, evaluation_indices, unknown_indices
 
 
 # =============================================================================

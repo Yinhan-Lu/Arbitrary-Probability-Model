@@ -33,6 +33,16 @@ from model.arbitrary_prob_gpt2 import GPT2Model
 from model.token_manager import TokenManager
 from train.dataset import get_dataloader
 from train.augmentation import ConditionalAugmenter
+from train.blockwise_sampling import (
+    uniform_num_conditioning_distribution,
+    uniform_num_blocks_distribution,
+    uniform_block_sizes_distribution,
+    uniform_num_evaluation_distribution,
+    generate_boundary_conditioning_split,
+)
+from train.evaluation_modes import evaluate_all_modes
+from functools import partial
+import torch.nn.functional as F
 
 logging.basicConfig(
     level=logging.INFO,
@@ -166,18 +176,54 @@ class ConditionalTrainer:
             self.val_loader = None
 
         # Create conditional augmenter
-        self.augmenter = ConditionalAugmenter(
-            mask_token_id=self.mask_token_id,
-            bos_token_id=self.bos_token_id,
-            conditioning_ratio=self.args.conditioning_ratio,
-            evaluation_ratio=self.args.evaluation_ratio,
-            min_conditioning=self.args.min_conditioning,
-            min_evaluation=self.args.min_evaluation,
-            conditioning_sampling=self.args.conditioning_sampling,
-            evaluation_sampling=self.args.evaluation_sampling,
-            max_cond_blocks=self.args.max_cond_blocks,
-            max_eval_blocks=self.args.max_eval_blocks
-        )
+        if self.args.use_distributions:
+            # Use distribution functions (flexible approach)
+            logger.info("Creating augmenter with distribution functions")
+            logger.info(f"  Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
+            logger.info(f"  Evaluation percentage range: [{self.args.eval_pct_min}, {self.args.eval_pct_max}]")
+
+            # Create distribution functions using partial
+            num_cond_dist = partial(
+                uniform_num_conditioning_distribution,
+                conditioning_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
+            )
+            # Original design: no max_blocks limit
+            num_cond_blocks_dist = uniform_num_blocks_distribution
+
+            num_eval_dist = partial(
+                uniform_num_evaluation_distribution,
+                evaluation_percentage_range=(self.args.eval_pct_min, self.args.eval_pct_max)
+            )
+            # Original design: no max_blocks limit
+            num_eval_blocks_dist = uniform_num_blocks_distribution
+
+            self.augmenter = ConditionalAugmenter(
+                mask_token_id=self.mask_token_id,
+                bos_token_id=self.bos_token_id,
+                num_conditioning_distribution=num_cond_dist,
+                num_blocks_distribution=num_cond_blocks_dist,
+                block_sizes_distribution=uniform_block_sizes_distribution,
+                num_evaluation_distribution=num_eval_dist,
+                num_eval_blocks_distribution=num_eval_blocks_dist,
+                eval_block_sizes_distribution=uniform_block_sizes_distribution,
+                min_conditioning=self.args.min_conditioning,
+                min_evaluation=self.args.min_evaluation,
+                conditioning_sampling=self.args.conditioning_sampling,
+                evaluation_sampling=self.args.evaluation_sampling,
+            )
+        else:
+            # Legacy ratio-based approach (backward compatible)
+            logger.info("Creating augmenter with legacy ratio-based approach")
+            self.augmenter = ConditionalAugmenter(
+                mask_token_id=self.mask_token_id,
+                bos_token_id=self.bos_token_id,
+                conditioning_ratio=self.args.conditioning_ratio,
+                evaluation_ratio=self.args.evaluation_ratio,
+                min_conditioning=self.args.min_conditioning,
+                min_evaluation=self.args.min_evaluation,
+                conditioning_sampling=self.args.conditioning_sampling,
+                evaluation_sampling=self.args.evaluation_sampling,
+            )
 
     def _setup_optimizer(self):
         """Setup optimizer and learning rate scheduler"""
@@ -289,13 +335,62 @@ class ConditionalTrainer:
                         metrics = {
                             'step': self.global_step,
                             'epoch': epoch + 1,
-                            'loss': f"{avg_loss:.6f}",
-                            'perplexity': f"{perplexity:.4f}",
-                            'learning_rate': f"{lr:.8f}"
+                            'loss': avg_loss,
+                            'perplexity': perplexity,
+                            'learning_rate': lr
                         }
                         self._log_to_csv(metrics)
 
                         running_loss = 0
+
+                    # Evaluation
+                    if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
+                        eval_results = evaluate_all_modes(
+                            model=self.model,
+                            dataloader=self.val_loader,
+                            device=self.device,
+                            augmenter=self.augmenter,
+                            max_batches=self.args.max_eval_batches
+                        )
+
+                        # Log all 5 modes
+                        logger.info(f"=" * 80)
+                        logger.info(f"Evaluation Results (Step {self.global_step})")
+                        logger.info(f"=" * 80)
+                        logger.info(f"Mode 1 (Autoregressive)   : loss={eval_results['mode1_loss']:.4f}, ppl={eval_results['mode1_ppl']:.2f}")
+                        logger.info(f"Mode 2 (Boundary Filling) : loss={eval_results['mode2_loss']:.4f}, ppl={eval_results['mode2_ppl']:.2f}")
+                        logger.info(f"Mode 3 (Training Dist)    : loss={eval_results['mode3_loss']:.4f}, ppl={eval_results['mode3_ppl']:.2f}")
+                        logger.info(f"Mode 4 (Auto on Boundary) : loss={eval_results['mode4_loss']:.4f}, ppl={eval_results['mode4_ppl']:.2f}")
+                        logger.info(f"Mode 5 (Auto on Training) : loss={eval_results['mode5_loss']:.4f}, ppl={eval_results['mode5_ppl']:.2f}")
+                        logger.info(f"-" * 80)
+                        logger.info(f"Comparisons:")
+                        logger.info(f"  Mode 2 vs 4 (Boundary):  Δ={eval_results['mode2_loss'] - eval_results['mode4_loss']:.4f} (negative = conditional better)")
+                        logger.info(f"  Mode 3 vs 5 (Training):  Δ={eval_results['mode3_loss'] - eval_results['mode5_loss']:.4f} (negative = conditional better)")
+                        logger.info(f"=" * 80)
+
+                        # Create evaluation metrics entry
+                        eval_metrics = {
+                            'step': self.global_step,
+                            'epoch': epoch + 1,
+                            'mode1_loss': eval_results['mode1_loss'],
+                            'mode1_ppl': eval_results['mode1_ppl'],
+                            'mode2_loss': eval_results['mode2_loss'],
+                            'mode2_ppl': eval_results['mode2_ppl'],
+                            'mode3_loss': eval_results['mode3_loss'],
+                            'mode3_ppl': eval_results['mode3_ppl'],
+                            'mode4_loss': eval_results['mode4_loss'],
+                            'mode4_ppl': eval_results['mode4_ppl'],
+                            'mode5_loss': eval_results['mode5_loss'],
+                            'mode5_ppl': eval_results['mode5_ppl'],
+                            'learning_rate': self.optimizer.param_groups[0]["lr"]
+                        }
+                        self._log_to_csv(eval_metrics)
+
+                        # Save best model (using Mode 3 loss as criterion)
+                        if eval_results["mode3_loss"] < self.best_val_loss:
+                            self.best_val_loss = eval_results["mode3_loss"]
+                            logger.info(f"New best model saved! Val Loss (Mode 3): {self.best_val_loss:.4f}")
+                            self._save_checkpoint("best_model")
 
                     # Save checkpoint
                     if self.global_step % self.args.save_steps == 0:
@@ -303,6 +398,8 @@ class ConditionalTrainer:
 
         logger.info("=" * 80)
         logger.info("Training completed!")
+        if self.args.do_eval:
+            logger.info(f"Best validation loss: {self.best_val_loss:.4f}")
         logger.info("=" * 80)
 
         # Save final model
@@ -417,6 +514,7 @@ class ConditionalTrainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
+            "best_val_loss": self.best_val_loss,
             "config": self.config.__dict__,
             "args": vars(self.args)
         }
@@ -431,8 +529,18 @@ class ConditionalTrainer:
             writer.writerow([
                 "step",
                 "epoch",
-                "loss",
-                "perplexity",
+                "train_loss",
+                "train_perplexity",
+                "mode1_loss",
+                "mode1_ppl",
+                "mode2_loss",
+                "mode2_ppl",
+                "mode3_loss",
+                "mode3_ppl",
+                "mode4_loss",
+                "mode4_ppl",
+                "mode5_loss",
+                "mode5_ppl",
                 "learning_rate"
             ])
 
@@ -443,8 +551,18 @@ class ConditionalTrainer:
             writer.writerow([
                 metrics.get('step', ''),
                 metrics.get('epoch', ''),
-                metrics.get('loss', ''),
-                metrics.get('perplexity', ''),
+                metrics.get('train_loss', ''),
+                metrics.get('train_perplexity', ''),
+                metrics.get('mode1_loss', ''),
+                metrics.get('mode1_ppl', ''),
+                metrics.get('mode2_loss', ''),
+                metrics.get('mode2_ppl', ''),
+                metrics.get('mode3_loss', ''),
+                metrics.get('mode3_ppl', ''),
+                metrics.get('mode4_loss', ''),
+                metrics.get('mode4_ppl', ''),
+                metrics.get('mode5_loss', ''),
+                metrics.get('mode5_ppl', ''),
                 metrics.get('learning_rate', '')
             ])
 
@@ -490,10 +608,25 @@ def parse_args():
                         help="Number of warmup steps")
 
     # Conditional modeling arguments
+    # Distribution-based parameters (recommended, more flexible)
+    parser.add_argument("--use_distributions", action="store_true",
+                        help="Use distribution functions instead of fixed ratios for sampling")
+    parser.add_argument("--cond_pct_min", type=float, default=0.2,
+                        help="Minimum percentage for conditioning tokens (when use_distributions=True)")
+    parser.add_argument("--cond_pct_max", type=float, default=0.4,
+                        help="Maximum percentage for conditioning tokens (when use_distributions=True)")
+    parser.add_argument("--eval_pct_min", type=float, default=0.2,
+                        help="Minimum percentage for evaluation tokens (when use_distributions=True)")
+    parser.add_argument("--eval_pct_max", type=float, default=0.4,
+                        help="Maximum percentage for evaluation tokens (when use_distributions=True)")
+
+    # Legacy ratio parameters (for backward compatibility)
     parser.add_argument("--conditioning_ratio", type=float, default=0.3,
-                        help="Fraction of tokens to use as conditioning")
+                        help="Fraction of tokens to use as conditioning (legacy, ignored if use_distributions=True)")
     parser.add_argument("--evaluation_ratio", type=float, default=0.3,
-                        help="Fraction of tokens to use as evaluation")
+                        help="Fraction of tokens to use as evaluation (legacy, ignored if use_distributions=True)")
+
+    # Common parameters
     parser.add_argument("--min_conditioning", type=int, default=1,
                         help="Minimum number of conditioning tokens")
     parser.add_argument("--min_evaluation", type=int, default=1,
@@ -504,14 +637,15 @@ def parse_args():
     parser.add_argument("--evaluation_sampling", type=str, default="blockwise",
                         choices=["random", "blockwise"],
                         help="Sampling mode for evaluation set: 'random' or 'blockwise'")
-    parser.add_argument("--max_cond_blocks", type=int, default=3,
-                        help="Maximum number of blocks for conditioning (when blockwise, default: 3)")
-    parser.add_argument("--max_eval_blocks", type=int, default=2,
-                        help="Maximum number of blocks for evaluation (when blockwise, default: 2)")
-
     # Logging arguments
-    parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--logging_steps", type=int, default=10,
+                        help="Log every N steps")
+    parser.add_argument("--eval_steps", type=int, default=500,
+                        help="Evaluate every N steps")
+    parser.add_argument("--save_steps", type=int, default=1000,
+                        help="Save checkpoint every N steps")
+    parser.add_argument("--max_eval_batches", type=int, default=100,
+                        help="Maximum evaluation batches")
     parser.add_argument("--do_eval", action="store_true",
                         help="Run evaluation during training")
 

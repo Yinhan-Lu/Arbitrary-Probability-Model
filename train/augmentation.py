@@ -45,8 +45,16 @@ class ConditionalAugmenter:
         mask_token_id,
         bos_token_id,
         pad_token_id=-100,
-        conditioning_ratio=0.3,
-        evaluation_ratio=0.3,
+        # Distribution function parameters (new, flexible approach)
+        num_conditioning_distribution=None,
+        num_blocks_distribution=None,
+        block_sizes_distribution=None,
+        num_evaluation_distribution=None,
+        num_eval_blocks_distribution=None,
+        eval_block_sizes_distribution=None,
+        # Legacy ratio parameters (for backward compatibility)
+        conditioning_ratio=None,
+        evaluation_ratio=None,
         min_conditioning=1,
         min_evaluation=1,
         include_bos=True,
@@ -62,8 +70,20 @@ class ConditionalAugmenter:
             mask_token_id: Token ID for [M] mask token
             bos_token_id: Token ID for [BOS] beginning of sequence
             pad_token_id: Token ID for padding (for labels, -100 to ignore)
+
+            Distribution function parameters (recommended):
+            num_conditioning_distribution: Callable[[int], int] - samples num conditioning tokens from seq_len
+            num_blocks_distribution: Callable[[int], int] - samples num blocks from num_items
+            block_sizes_distribution: Callable[[int, int], list[int]] - samples block sizes
+            num_evaluation_distribution: Callable[[int], int] - samples num evaluation tokens from available_len
+            num_eval_blocks_distribution: Callable[[int], int] - samples num eval blocks
+            eval_block_sizes_distribution: Callable[[int, int], list[int]] - samples eval block sizes
+
+            Legacy ratio parameters (deprecated, for backward compatibility):
             conditioning_ratio: Fraction of tokens to use as conditioning (default 0.3)
             evaluation_ratio: Fraction of tokens to use as evaluation (default 0.3)
+
+            Other parameters:
             min_conditioning: Minimum number of conditioning tokens
             min_evaluation: Minimum number of evaluation tokens
             include_bos: Whether to prepend BOS token
@@ -75,29 +95,46 @@ class ConditionalAugmenter:
         self.mask_token_id = mask_token_id
         self.bos_token_id = bos_token_id
         self.pad_token_id = pad_token_id
-
-        self.conditioning_ratio = conditioning_ratio
-        self.evaluation_ratio = evaluation_ratio
-        self.min_conditioning = min_conditioning
-        self.min_evaluation = min_evaluation
         self.include_bos = include_bos
-
         self.conditioning_sampling = conditioning_sampling
         self.evaluation_sampling = evaluation_sampling
+
+        # Store distribution functions if provided
+        self.num_conditioning_distribution = num_conditioning_distribution
+        self.num_blocks_distribution = num_blocks_distribution
+        self.block_sizes_distribution = block_sizes_distribution
+        self.num_evaluation_distribution = num_evaluation_distribution
+        self.num_eval_blocks_distribution = num_eval_blocks_distribution
+        self.eval_block_sizes_distribution = eval_block_sizes_distribution
+
+        # Store legacy parameters for backward compatibility
+        self.conditioning_ratio = conditioning_ratio if conditioning_ratio is not None else 0.3
+        self.evaluation_ratio = evaluation_ratio if evaluation_ratio is not None else 0.3
+        self.min_conditioning = min_conditioning
+        self.min_evaluation = min_evaluation
         self.max_cond_blocks = max_cond_blocks
         self.max_eval_blocks = max_eval_blocks
+
+        # Determine if using distribution functions or legacy ratios
+        self.use_distributions = num_conditioning_distribution is not None
 
         logger.info(f"ConditionalAugmenter initialized:")
         logger.info(f"  Mask token ID: {mask_token_id}")
         logger.info(f"  BOS token ID: {bos_token_id}")
-        logger.info(f"  Conditioning ratio: {conditioning_ratio}")
-        logger.info(f"  Evaluation ratio: {evaluation_ratio}")
-        logger.info(f"  Conditioning sampling: {conditioning_sampling}")
-        if conditioning_sampling == 'blockwise':
-            logger.info(f"    Max cond blocks: {max_cond_blocks}")
-        logger.info(f"  Evaluation sampling: {evaluation_sampling}")
-        if evaluation_sampling == 'blockwise':
-            logger.info(f"    Max eval blocks: {max_eval_blocks}")
+        if self.use_distributions:
+            logger.info(f"  Mode: Distribution functions")
+            logger.info(f"  Conditioning sampling: {conditioning_sampling}")
+            logger.info(f"  Evaluation sampling: {evaluation_sampling}")
+        else:
+            logger.info(f"  Mode: Legacy ratios (backward compatible)")
+            logger.info(f"  Conditioning ratio: {self.conditioning_ratio}")
+            logger.info(f"  Evaluation ratio: {self.evaluation_ratio}")
+            logger.info(f"  Conditioning sampling: {conditioning_sampling}")
+            if conditioning_sampling == 'blockwise':
+                logger.info(f"    Max cond blocks: {max_cond_blocks}")
+            logger.info(f"  Evaluation sampling: {evaluation_sampling}")
+            if evaluation_sampling == 'blockwise':
+                logger.info(f"    Max eval blocks: {max_eval_blocks}")
 
     def split_indices(self, seq_len):
         """
@@ -113,7 +150,19 @@ class ConditionalAugmenter:
         Returns:
             Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
         """
-        # If both are blockwise, use the unified blockwise function
+        # If using distribution functions, call the bottom-level API directly
+        if self.use_distributions and self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
+            return generate_conditioning_evaluation_sets_blockwise(
+                seq_len=seq_len,
+                num_conditioning_distribution=self.num_conditioning_distribution,
+                num_blocks_distribution=self.num_blocks_distribution,
+                block_sizes_distribution=self.block_sizes_distribution,
+                num_evaluation_distribution=self.num_evaluation_distribution,
+                num_eval_blocks_distribution=self.num_eval_blocks_distribution,
+                eval_block_sizes_distribution=self.eval_block_sizes_distribution,
+            )
+
+        # Legacy path: If both are blockwise, use the unified blockwise function with ratios
         if self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
             return generate_conditioning_set_blockwise(
                 seq_len=seq_len,
