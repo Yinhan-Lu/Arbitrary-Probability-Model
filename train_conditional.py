@@ -200,6 +200,9 @@ class ConditionalTrainer:
             self.augmenter = ConditionalAugmenter(
                 mask_token_id=self.mask_token_id,
                 bos_token_id=self.bos_token_id,
+                max_seq_len=effective_max_length,
+                cond_pct_max=self.args.cond_pct_max,
+                tokenizer_pad_token_id=self.tokenizer.pad_token_id,
                 num_conditioning_distribution=num_cond_dist,
                 num_blocks_distribution=num_cond_blocks_dist,
                 block_sizes_distribution=uniform_block_sizes_distribution,
@@ -217,6 +220,9 @@ class ConditionalTrainer:
             self.augmenter = ConditionalAugmenter(
                 mask_token_id=self.mask_token_id,
                 bos_token_id=self.bos_token_id,
+                max_seq_len=effective_max_length,
+                cond_pct_max=self.args.conditioning_ratio,
+                tokenizer_pad_token_id=self.tokenizer.pad_token_id,
                 conditioning_ratio=self.args.conditioning_ratio,
                 evaluation_ratio=self.args.evaluation_ratio,
                 min_conditioning=self.args.min_conditioning,

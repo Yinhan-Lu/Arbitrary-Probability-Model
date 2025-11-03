@@ -249,43 +249,49 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
                 break
 
             input_ids = batch['input_ids'].to(device)
-            batch_size = input_ids.shape[0]
+            batch_size, seq_len = input_ids.shape
 
+            batch_loss = 0.0
+            batch_tokens = 0
             batch_eval_indices = []
 
-            # Augment batch using training augmenter
-            augmented_batch = augmenter.augment_batch(input_ids, device=device)
-
-            # Collect evaluation indices for each sample
+            # Process each sample individually (like Mode 2)
+            # This avoids the need for padding different-length sequences
             for i in range(batch_size):
                 sample_ids = input_ids[i]
-                cond_idx, eval_idx, unknown_idx = augmenter.split_indices(sample_ids.shape[0])
+
+                # Augment single sequence
+                result = augmenter.augment_sequence(sample_ids, device=device)
+
+                # Collect evaluation indices
+                cond_idx, eval_idx, unknown_idx = augmenter.split_indices(seq_len)
                 batch_eval_indices.append(eval_idx)
 
-            # Forward pass
-            outputs = model(
-                input_ids=augmented_batch['input_ids'],
-                position_ids=augmented_batch['position_ids'],
-                attention_mask=augmented_batch['attention_mask'],
-            )
-            logits = outputs['logits']
-            labels = augmented_batch['labels']
+                # Forward pass for this single sample
+                outputs = model(
+                    input_ids=result['aug_input_ids'].unsqueeze(0),
+                    position_ids=result['position_ids'].unsqueeze(0),
+                    attention_mask=result['attention_mask'].unsqueeze(0).unsqueeze(0),
+                )
+                logits = outputs['logits'].squeeze(0)
+                labels = result['labels']
 
-            # Compute loss (with shift)
-            shift_logits = logits[:, :-1, :].contiguous()
-            shift_labels = labels[:, 1:].contiguous()
+                # Compute loss (with shift)
+                shift_logits = logits[:-1]
+                shift_labels = labels[1:]
 
-            loss = F.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1),
-                ignore_index=-100,
-                reduction='sum'
-            )
+                valid_mask = (shift_labels != -100)
+                if valid_mask.sum() > 0:
+                    loss = F.cross_entropy(
+                        shift_logits[valid_mask],
+                        shift_labels[valid_mask],
+                        reduction='sum'
+                    )
+                    batch_loss += loss.item()
+                    batch_tokens += valid_mask.sum().item()
 
-            valid_tokens = (shift_labels != -100).sum().item()
-
-            total_loss += loss.item()
-            total_tokens += valid_tokens
+            total_loss += batch_loss
+            total_tokens += batch_tokens
             all_eval_indices.extend(batch_eval_indices)
             num_batches += 1
 

@@ -45,6 +45,10 @@ class ConditionalAugmenter:
         mask_token_id,
         bos_token_id,
         pad_token_id=-100,
+        # Padding parameters
+        max_seq_len=1024,
+        cond_pct_max=0.5,
+        tokenizer_pad_token_id=50256,
         # Distribution function parameters (new, flexible approach)
         num_conditioning_distribution=None,
         num_blocks_distribution=None,
@@ -71,6 +75,11 @@ class ConditionalAugmenter:
             bos_token_id: Token ID for [BOS] beginning of sequence
             pad_token_id: Token ID for padding (for labels, -100 to ignore)
 
+            Padding parameters:
+            max_seq_len: Maximum sequence length from dataset (default: 1024)
+            cond_pct_max: Maximum conditioning percentage (default: 0.5)
+            tokenizer_pad_token_id: Tokenizer's pad token ID for input_ids padding (default: 50256 for GPT-2)
+
             Distribution function parameters (recommended):
             num_conditioning_distribution: Callable[[int], int] - samples num conditioning tokens from seq_len
             num_blocks_distribution: Callable[[int], int] - samples num blocks from num_items
@@ -95,9 +104,18 @@ class ConditionalAugmenter:
         self.mask_token_id = mask_token_id
         self.bos_token_id = bos_token_id
         self.pad_token_id = pad_token_id
+        self.tokenizer_pad_token_id = tokenizer_pad_token_id
         self.include_bos = include_bos
         self.conditioning_sampling = conditioning_sampling
         self.evaluation_sampling = evaluation_sampling
+
+        # Calculate upper bound for augmented sequence length
+        # aug_len = N_cond + 1 (BOS) + original_seq_len
+        # Maximum N_cond = ceil(max_seq_len * cond_pct_max)
+        import math
+        max_n_cond = math.ceil(max_seq_len * cond_pct_max)
+        self.aug_max_len = max_n_cond + 1 + max_seq_len
+        self.max_seq_len = max_seq_len
 
         # Store distribution functions if provided
         self.num_conditioning_distribution = num_conditioning_distribution
@@ -121,6 +139,10 @@ class ConditionalAugmenter:
         logger.info(f"ConditionalAugmenter initialized:")
         logger.info(f"  Mask token ID: {mask_token_id}")
         logger.info(f"  BOS token ID: {bos_token_id}")
+        logger.info(f"  Padding:")
+        logger.info(f"    Max sequence length: {max_seq_len}")
+        logger.info(f"    Max conditioning %: {cond_pct_max * 100:.1f}%")
+        logger.info(f"    Augmented max length: {self.aug_max_len}")
         if self.use_distributions:
             logger.info(f"  Mode: Distribution functions")
             logger.info(f"  Conditioning sampling: {conditioning_sampling}")
@@ -363,15 +385,63 @@ class ConditionalAugmenter:
             aug_masks.append(result["attention_mask"])
             aug_labels.append(result["labels"])
 
-        # Stack into batches
-        # All sequences should have same length after augmentation
-        input_ids = torch.stack(aug_inputs, dim=0)
-        position_ids = torch.stack(aug_positions, dim=0)
-        labels = torch.stack(aug_labels, dim=0)
+        # Pad all sequences to aug_max_len before stacking
+        # This ensures all sequences in batch have same length
+        padded_inputs = []
+        padded_positions = []
+        padded_labels = []
+        padded_masks = []
+
+        for i in range(batch_size):
+            current_len = aug_inputs[i].size(0)
+            pad_len = self.aug_max_len - current_len
+
+            if pad_len > 0:
+                # Pad input_ids with tokenizer's pad token
+                padded_input = torch.cat([
+                    aug_inputs[i],
+                    torch.full((pad_len,), self.tokenizer_pad_token_id, dtype=torch.long, device=device)
+                ], dim=0)
+
+                # Pad position_ids with 0
+                padded_position = torch.cat([
+                    aug_positions[i],
+                    torch.zeros(pad_len, dtype=torch.long, device=device)
+                ], dim=0)
+
+                # Pad labels with -100 (ignored by loss)
+                padded_label = torch.cat([
+                    aug_labels[i],
+                    torch.full((pad_len,), -100, dtype=torch.long, device=device)
+                ], dim=0)
+
+                # Pad attention mask (2D matrix)
+                # Original mask shape: (current_len, current_len)
+                # Padded mask shape: (aug_max_len, aug_max_len)
+                # Padded positions cannot attend to anything and cannot be attended to
+                padded_mask = torch.zeros(self.aug_max_len, self.aug_max_len, dtype=aug_masks[i].dtype, device=device)
+                padded_mask[:current_len, :current_len] = aug_masks[i]
+
+            else:
+                # No padding needed (already at max length)
+                padded_input = aug_inputs[i]
+                padded_position = aug_positions[i]
+                padded_label = aug_labels[i]
+                padded_mask = aug_masks[i]
+
+            padded_inputs.append(padded_input)
+            padded_positions.append(padded_position)
+            padded_labels.append(padded_label)
+            padded_masks.append(padded_mask)
+
+        # Stack into batches (now all sequences have same length)
+        input_ids = torch.stack(padded_inputs, dim=0)
+        position_ids = torch.stack(padded_positions, dim=0)
+        labels = torch.stack(padded_labels, dim=0)
 
         # Attention masks need an extra dimension for broadcasting
-        # Shape: (batch_size, 1, seq_len, seq_len)
-        attention_mask = torch.stack(aug_masks, dim=0).unsqueeze(1)
+        # Shape: (batch_size, 1, aug_max_len, aug_max_len)
+        attention_mask = torch.stack(padded_masks, dim=0).unsqueeze(1)
 
         return {
             "input_ids": input_ids,
