@@ -229,12 +229,17 @@ class ConditionalAugmenter:
         seq_tokens = [self.bos_token_id]  # BOS at front
         seq_position_ids = [0]  # BOS uses position 0
 
-        # Body tokens (only mask unknown set, keep cond + eval)
+        # Body tokens: Keep cond + eval, only mask truly unseen tokens
+        # IMPORTANT: unknown_idx contains eval_idx, but we want to keep eval tokens visible
+        # so that when predicting an eval token, the model can see previous eval tokens.
+        # Only mask tokens that are neither conditioning nor evaluation (truly unseen).
+        unseen_idx = set(unknown_idx) - set(eval_idx)
+
         for i in range(seq_len):
-            if i in unknown_idx:
-                seq_tokens.append(self.mask_token_id)  # Mask unknown
+            if i in unseen_idx:
+                seq_tokens.append(self.mask_token_id)  # Mask only truly unseen tokens
             else:
-                seq_tokens.append(input_ids[i].item())  # Keep cond + eval
+                seq_tokens.append(input_ids[i].item())  # Keep cond + eval visible
             seq_position_ids.append(i + 1)  # Body uses positions 1 to seq_len
         N_seq = len(seq_tokens)
 

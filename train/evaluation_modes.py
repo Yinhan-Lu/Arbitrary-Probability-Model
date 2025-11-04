@@ -192,11 +192,16 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                 seq_tokens = [bos_token_id]
                 seq_position_ids = [0]
 
+                # Body tokens: Keep cond + eval, only mask truly unseen tokens
+                # Mode 2 differs from training only in how conditioning is selected (boundary vs blockwise)
+                # But inference logic is the same: keep cond + eval visible in body
+                unseen_idx = set(unknown_idx) - set(eval_idx)
+
                 for j in range(seq_len):
-                    if j in unknown_idx:
-                        seq_tokens.append(mask_token_id)  # Mask unknown (which = eval for Mode 2)
+                    if j in unseen_idx:
+                        seq_tokens.append(mask_token_id)  # Mask only truly unseen tokens
                     else:
-                        seq_tokens.append(sample_ids[j].item())  # Keep conditioning
+                        seq_tokens.append(sample_ids[j].item())  # Keep cond + eval visible
                     seq_position_ids.append(j + 1)  # Body uses positions 1-seq_len
 
                 N_seq = len(seq_tokens)
