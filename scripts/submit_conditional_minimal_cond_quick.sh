@@ -73,6 +73,8 @@ python3 ./train_conditional.py \
     --evaluation_sampling blockwise \
     --min_conditioning 0 \
     --min_evaluation 1 \
+    --mode2_boundary_cond_pct_min 0.1 \
+    --mode2_boundary_cond_pct_max 0.3 \
     --logging_steps 10 \
     --eval_steps 100 \
     --save_steps 500 \

@@ -132,26 +132,26 @@ class ConditionalTrainer:
         """Setup data loaders"""
         logger.info("Loading dataset...")
 
-        # Calculate effective max_length for dataset to account for prefix conditioning overhead
-        # Augmented sequence length: N_cond + 1 (BOS) + seq_len
-        # Where N_cond ≤ cond_pct_max * seq_len
-        # So: augmented_length ≤ (1 + cond_pct_max) * seq_len + 1
-        # We need: augmented_length ≤ max_seq_len
-        # Therefore: seq_len ≤ (max_seq_len - 1) / (1 + cond_pct_max)
+        # Dataset configuration for prefix conditioning
+        # Design: Body sequence is fixed at max_seq_len (e.g., 1024)
+        # Conditioning tokens are extra prefix: total_len = N_cond + 1 + max_seq_len
+        # Position IDs stay within [0, max_seq_len] by reusing original positions
 
-        augmentation_factor = 1.0 + self.args.cond_pct_max
-        effective_max_length = int((self.config.max_seq_len - 1) / augmentation_factor)
-
-        logger.info(f"Adjusting dataset max_length for prefix conditioning:")
+        import math
+        logger.info(f"Dataset configuration for prefix conditioning:")
         logger.info(f"  Model max_seq_len: {self.config.max_seq_len}")
+        logger.info(f"  Dataset max_length: {self.config.max_seq_len}")
         logger.info(f"  Max conditioning percentage: {self.args.cond_pct_max}")
-        logger.info(f"  Augmentation factor: {augmentation_factor:.2f}x")
-        logger.info(f"  Dataset effective max_length: {effective_max_length}")
 
-        # Create a modified config for dataset with adjusted max_seq_len
+        # Calculate expected augmented sequence length
+        max_n_cond = math.ceil(self.config.max_seq_len * self.args.cond_pct_max)
+        aug_max_len = max_n_cond + 1 + self.config.max_seq_len
+        logger.info(f"  Expected max augmented length: {aug_max_len}")
+        logger.info(f"    = {max_n_cond} (prefix) + 1 (BOS) + {self.config.max_seq_len} (body)")
+
+        # Use original config for dataset (no adjustment needed)
         from copy import copy
         dataset_config = copy(self.config)
-        dataset_config.max_seq_len = effective_max_length
 
         # Note: Using standard dataloader, will augment in training loop
         self.train_loader = get_dataloader(
@@ -336,7 +336,8 @@ class ConditionalTrainer:
                             dataloader=self.val_loader,
                             device=self.device,
                             augmenter=self.augmenter,
-                            max_batches=self.args.max_eval_batches
+                            max_batches=self.args.max_eval_batches,
+                            trainer_args=self.args
                         )
 
                         # Log all 5 modes
@@ -625,6 +626,12 @@ def parse_args():
                         help="Maximum evaluation batches")
     parser.add_argument("--do_eval", action="store_true",
                         help="Run evaluation during training")
+
+    # Mode 2 (Boundary filling) evaluation parameters
+    parser.add_argument("--mode2_boundary_cond_pct_min", type=float, default=0.1,
+                        help="Minimum conditioning percentage for Mode 2 boundary evaluation")
+    parser.add_argument("--mode2_boundary_cond_pct_max", type=float, default=0.3,
+                        help="Maximum conditioning percentage for Mode 2 boundary evaluation")
 
     # Output arguments
     parser.add_argument("--output_dir", type=str, default="./experiments")

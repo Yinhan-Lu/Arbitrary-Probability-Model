@@ -482,8 +482,57 @@ def generate_conditioning_set_blockwise(
     )
 
 
+def uniform_boundary_block_sizes_distribution(
+    seq_len: int,
+    boundary_cond_percentage_range: tuple[float, float] = (0.1, 0.3)
+) -> tuple[int, int]:
+    """
+    Sample boundary block sizes for Mode 2 evaluation.
+
+    Returns start_size and end_size such that their sum respects the
+    conditioning percentage range.
+
+    Args:
+        seq_len: Sequence length
+        boundary_cond_percentage_range: (min_pct, max_pct) for total conditioning
+
+    Returns:
+        (start_size, end_size) tuple
+
+    Example:
+        For seq_len=1024, range=(0.1, 0.3):
+        - Total conditioning: 103-307 tokens
+        - Returns (start=50, end=60) where start+end ∈ [103, 307]
+    """
+    min_pct, max_pct = boundary_cond_percentage_range
+
+    # Sample total conditioning percentage
+    total_pct = random.uniform(min_pct, max_pct)
+    max_total_cond = int(seq_len * total_pct)
+
+    # Ensure at least 1 token each and leave room for middle
+    max_total_cond = min(max_total_cond, seq_len - 1)
+    max_total_cond = max(max_total_cond, 2)  # At least 2 (1 start + 1 end)
+
+    # Randomly split between start and end
+    # Start: 20%-80% of total, End: the rest
+    start_ratio = random.uniform(0.2, 0.8)
+    start_size = max(1, int(max_total_cond * start_ratio))
+    end_size = max(1, max_total_cond - start_size)
+
+    # Ensure doesn't exceed sequence
+    if start_size + end_size >= seq_len:
+        # Adjust to leave at least 1 middle token
+        total = seq_len - 1
+        start_size = max(1, total // 2)
+        end_size = total - start_size
+
+    return start_size, end_size
+
+
 def generate_boundary_conditioning_split(
     seq_len: int,
+    boundary_block_sizes_distribution: Callable[[int], tuple[int, int]] = None,
     start_block_range: tuple[int, int] = None,
     end_block_range: tuple[int, int] = None,
 ) -> tuple[list[int], list[int], list[int]]:
@@ -495,10 +544,15 @@ def generate_boundary_conditioning_split(
 
     Args:
         seq_len: Sequence length
+        boundary_block_sizes_distribution: Optional callable that takes seq_len
+                                          and returns (start_size, end_size).
+                                          If provided, overrides range-based sampling.
         start_block_range: (min_size, max_size) for start block.
                           Default: (1, seq_len // 3)
+                          Ignored if boundary_block_sizes_distribution is provided.
         end_block_range: (min_size, max_size) for end block.
                         Default: (1, seq_len // 3)
+                        Ignored if boundary_block_sizes_distribution is provided.
 
     Returns:
         Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
@@ -517,26 +571,30 @@ def generate_boundary_conditioning_split(
     if seq_len < 3:
         raise ValueError(f"Sequence too short for boundary split: {seq_len}")
 
-    # Default ranges
-    if start_block_range is None:
-        max_single_block = max(1, seq_len // 3)
-        start_block_range = (1, max_single_block)
+    # Use distribution if provided, otherwise fall back to range-based sampling
+    if boundary_block_sizes_distribution is not None:
+        start_size, end_size = boundary_block_sizes_distribution(seq_len)
+    else:
+        # Default ranges
+        if start_block_range is None:
+            max_single_block = max(1, seq_len // 3)
+            start_block_range = (1, max_single_block)
 
-    if end_block_range is None:
-        max_single_block = max(1, seq_len // 3)
-        end_block_range = (1, max_single_block)
+        if end_block_range is None:
+            max_single_block = max(1, seq_len // 3)
+            end_block_range = (1, max_single_block)
 
-    # Sample start block size
-    min_start, max_start = start_block_range
-    max_start = min(max_start, seq_len - 2)  # Leave room for end block and middle
-    start_size = random.randint(min_start, max_start)
+        # Sample start block size
+        min_start, max_start = start_block_range
+        max_start = min(max_start, seq_len - 2)  # Leave room for end block and middle
+        start_size = random.randint(min_start, max_start)
 
-    # Sample end block size (must leave room for start block and at least 1 middle token)
-    min_end, max_end = end_block_range
-    max_end = min(max_end, seq_len - start_size - 1)  # Leave room for start block and middle
-    if max_end < min_end:
-        max_end = min_end
-    end_size = random.randint(min_end, max_end)
+        # Sample end block size (must leave room for start block and at least 1 middle token)
+        min_end, max_end = end_block_range
+        max_end = min(max_end, seq_len - start_size - 1)  # Leave room for start block and middle
+        if max_end < min_end:
+            max_end = min_end
+        end_size = random.randint(min_end, max_end)
 
     # Build indices
     conditioning_indices = list(range(start_size)) + list(range(seq_len - end_size, seq_len))

@@ -233,14 +233,21 @@ class GPT2Model(nn.Module):
             loss: Optional language modeling loss if labels are provided
         """
         B, T = input_ids.size()
-        assert T <= self.config.max_seq_len, f"Sequence length {T} exceeds maximum {self.config.max_seq_len}"
 
         # Get token and position embeddings
         if position_ids is None:
             # Default: sequential positions 0, 1, 2, ..., T-1
+            # In this case, check total sequence length
+            assert T <= self.config.max_seq_len, \
+                f"Sequence length {T} exceeds maximum {self.config.max_seq_len}"
             pos = torch.arange(0, T, dtype=torch.long, device=input_ids.device).unsqueeze(0)  # (1, T)
         else:
             # Custom positions for prefix conditioning
+            # In this case, check that position IDs are within range
+            # (total sequence length can exceed max_seq_len)
+            max_pos = position_ids.max().item()
+            assert max_pos < self.config.max_seq_len, \
+                f"Position ID {max_pos} exceeds maximum {self.config.max_seq_len - 1}"
             pos = position_ids
             if pos.dim() == 1:
                 pos = pos.unsqueeze(0)  # (T,) -> (1, T)

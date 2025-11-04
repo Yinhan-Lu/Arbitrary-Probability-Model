@@ -104,6 +104,8 @@ python3 train_conditional.py \
     --eval_pct_max 0.4 \
     --min_conditioning 1 \
     --min_evaluation 1 \
+    --mode2_boundary_cond_pct_min 0.1 \
+    --mode2_boundary_cond_pct_max 0.3 \
     --logging_steps 100 \
     --save_steps 1000 \
     --do_eval \

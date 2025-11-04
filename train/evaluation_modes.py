@@ -18,7 +18,10 @@ import logging
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from train.blockwise_sampling import generate_boundary_conditioning_split
+from train.blockwise_sampling import (
+    generate_boundary_conditioning_split,
+    uniform_boundary_block_sizes_distribution
+)
 from train.mask_utils import create_prefix_conditional_mask
 
 logger = logging.getLogger(__name__)
@@ -99,7 +102,7 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
     }
 
 
-def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_batches=None):
+def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_batches=None, trainer_args=None):
     """
     Mode 2: Boundary-constrained conditional evaluation
 
@@ -113,6 +116,7 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
         device: Device to run on
         augmenter: Augmenter with boundary sampling (used for augment_sequence API)
         max_batches: Maximum number of batches to evaluate
+        trainer_args: Trainer arguments containing Mode 2 boundary distribution parameters
 
     Returns:
         dict with keys: loss, perplexity, eval_indices_list
@@ -122,6 +126,20 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
     total_tokens = 0
     all_eval_indices = []
     num_batches = 0
+
+    # Create boundary distribution function from trainer_args
+    boundary_distribution = None
+    if trainer_args is not None:
+        boundary_cond_pct_min = getattr(trainer_args, 'mode2_boundary_cond_pct_min', 0.1)
+        boundary_cond_pct_max = getattr(trainer_args, 'mode2_boundary_cond_pct_max', 0.3)
+
+        # Create partial function with the percentage range
+        def boundary_dist_fn(seq_len):
+            return uniform_boundary_block_sizes_distribution(
+                seq_len,
+                boundary_cond_percentage_range=(boundary_cond_pct_min, boundary_cond_pct_max)
+            )
+        boundary_distribution = boundary_dist_fn
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
@@ -139,8 +157,11 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
             for i in range(batch_size):
                 sample_ids = input_ids[i]
 
-                # Generate boundary split
-                cond_idx, eval_idx, unknown_idx = generate_boundary_conditioning_split(seq_len)
+                # Generate boundary split with distribution
+                cond_idx, eval_idx, unknown_idx = generate_boundary_conditioning_split(
+                    seq_len,
+                    boundary_block_sizes_distribution=boundary_distribution
+                )
                 batch_eval_indices.append(eval_idx)
 
                 # Augment sequence (manually, similar to augmenter.augment_sequence)
@@ -425,7 +446,7 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
     }
 
 
-def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None):
+def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, trainer_args=None):
     """
     Orchestrator: Run all 5 evaluation modes
 
@@ -442,6 +463,7 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None):
         device: Device to run on
         augmenter: Training augmenter
         max_batches: Maximum number of batches to evaluate
+        trainer_args: Trainer arguments containing Mode 2 boundary distribution parameters
 
     Returns:
         dict with all metrics for 5 modes
@@ -450,7 +472,7 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None):
 
     # Mode 2: Boundary filling
     logger.info("  Mode 2: Boundary filling...")
-    metrics_mode2 = evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_batches)
+    metrics_mode2 = evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_batches, trainer_args)
 
     # Mode 3: Training distribution
     logger.info("  Mode 3: Training distribution...")
