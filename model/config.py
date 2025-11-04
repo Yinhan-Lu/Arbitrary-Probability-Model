@@ -14,7 +14,7 @@ DISTILGPT2_CONFIG = GPT2Config(
     n_layer=6,                  # Number of transformer layers (distilled from 12)
     n_head=12,                  # Number of attention heads
     n_embd=768,                 # Embedding dimension
-    max_seq_len=1024,           # Maximum sequence length (n_positions)
+    max_seq_len=1024,           # Maximum sequence length (positions 0-1023)
     dropout=0.1,                # Dropout rate (embd_pdrop, attn_pdrop, resid_pdrop)
     layer_norm_eps=1e-5,        # Layer normalization epsilon
     ffn_mult=4,                 # FFN hidden size = n_embd * 4 = 3072

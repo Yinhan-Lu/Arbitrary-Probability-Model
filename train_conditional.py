@@ -133,25 +133,28 @@ class ConditionalTrainer:
         logger.info("Loading dataset...")
 
         # Dataset configuration for prefix conditioning
-        # Design: Body sequence is fixed at max_seq_len (e.g., 1024)
-        # Conditioning tokens are extra prefix: total_len = N_cond + 1 + max_seq_len
-        # Position IDs stay within [0, max_seq_len] by reusing original positions
+        # Design: Total 1024 positions (0-1023), including BOS at position 0
+        # BOS (1 token) + Body (1023 tokens) = 1024 total positions
+        # Conditioning tokens are extra prefix: total_len = N_cond + 1024
+        # Position IDs: BOS uses 0, Body uses 1-1023, Conditioning reuses 1-1023
 
         import math
+        self.body_seq_len = self.config.max_seq_len - 1  # Reserve position 0 for BOS
         logger.info(f"Dataset configuration for prefix conditioning:")
-        logger.info(f"  Model max_seq_len: {self.config.max_seq_len}")
-        logger.info(f"  Dataset max_length: {self.config.max_seq_len}")
+        logger.info(f"  Model max_seq_len: {self.config.max_seq_len} (positions 0-{self.config.max_seq_len-1})")
+        logger.info(f"  Dataset max_length: {self.body_seq_len} (body tokens, positions 1-{self.config.max_seq_len-1})")
         logger.info(f"  Max conditioning percentage: {self.args.cond_pct_max}")
 
         # Calculate expected augmented sequence length
-        max_n_cond = math.ceil(self.config.max_seq_len * self.args.cond_pct_max)
-        aug_max_len = max_n_cond + 1 + self.config.max_seq_len
+        max_n_cond = math.ceil(self.body_seq_len * self.args.cond_pct_max)
+        aug_max_len = max_n_cond + self.config.max_seq_len  # prefix + (BOS + body)
         logger.info(f"  Expected max augmented length: {aug_max_len}")
-        logger.info(f"    = {max_n_cond} (prefix) + 1 (BOS) + {self.config.max_seq_len} (body)")
+        logger.info(f"    = {max_n_cond} (prefix) + {self.config.max_seq_len} (BOS + body)")
 
-        # Use original config for dataset (no adjustment needed)
+        # Create dataset config with body_seq_len
         from copy import copy
         dataset_config = copy(self.config)
+        dataset_config.max_seq_len = self.body_seq_len  # Dataloader provides body tokens only
 
         # Note: Using standard dataloader, will augment in training loop
         self.train_loader = get_dataloader(
@@ -196,7 +199,7 @@ class ConditionalTrainer:
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.mask_token_id,
             bos_token_id=self.bos_token_id,
-            max_seq_len=self.config.max_seq_len,
+            max_seq_len=self.body_seq_len,  # Body tokens only (1023)
             cond_pct_max=self.args.cond_pct_max,
             tokenizer_pad_token_id=self.tokenizer.pad_token_id,
             num_conditioning_distribution=num_cond_dist,
