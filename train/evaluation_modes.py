@@ -225,6 +225,18 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
 
                 valid_mask = (shift_labels != -100)
                 if valid_mask.sum() > 0:
+                    # DEBUG: Check how many evaluation positions are padding tokens
+                    padding_token_id = 50256
+                    eval_tokens = shift_labels[valid_mask]
+                    num_padding_in_eval = (eval_tokens == padding_token_id).sum().item()
+                    num_real_in_eval = (eval_tokens != padding_token_id).sum().item()
+
+                    if i == 0 and batch_idx == 0:  # Log first sample of first batch
+                        logger.info(f"Mode 2 Debug: eval positions = {valid_mask.sum().item()}, "
+                                   f"padding = {num_padding_in_eval}, "
+                                   f"real tokens = {num_real_in_eval}, "
+                                   f"padding% = {100*num_padding_in_eval/valid_mask.sum().item():.1f}%")
+
                     loss = F.cross_entropy(
                         shift_logits[valid_mask],
                         shift_labels[valid_mask],
@@ -314,6 +326,18 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
 
                 valid_mask = (shift_labels != -100)
                 if valid_mask.sum() > 0:
+                    # DEBUG: Check how many evaluation positions are padding tokens
+                    padding_token_id = 50256
+                    eval_tokens = shift_labels[valid_mask]
+                    num_padding_in_eval = (eval_tokens == padding_token_id).sum().item()
+                    num_real_in_eval = (eval_tokens != padding_token_id).sum().item()
+
+                    if i == 0 and batch_idx == 0:  # Log first sample of first batch
+                        logger.info(f"Mode 3 Debug: eval positions = {valid_mask.sum().item()}, "
+                                   f"padding = {num_padding_in_eval}, "
+                                   f"real tokens = {num_real_in_eval}, "
+                                   f"padding% = {100*num_padding_in_eval/valid_mask.sum().item():.1f}%")
+
                     loss = F.cross_entropy(
                         shift_logits[valid_mask],
                         shift_labels[valid_mask],
