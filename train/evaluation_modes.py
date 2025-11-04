@@ -57,6 +57,7 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
                 break
 
             input_ids = batch['input_ids'].to(device)
+            attention_mask_1d = batch['attention_mask'].to(device)
             batch_size, seq_len = input_ids.shape
 
             # Standard causal mask
@@ -72,17 +73,23 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
             )
 
             # Compute loss on all positions (shift for next-token prediction)
+            # Only compute loss on non-padding tokens using attention_mask
             shift_logits = logits[:, :-1, :].contiguous()
             shift_labels = input_ids[:, 1:].contiguous()
 
+            # Use attention_mask to filter out padding tokens
+            # attention_mask_1d shape: [batch_size, seq_len], 1=real token, 0=padding
+            attention_mask_shifted = attention_mask_1d[:, 1:]  # Shift to match labels
+            valid_mask = (attention_mask_shifted == 1)
+
             loss = F.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1),
+                shift_logits[valid_mask],
+                shift_labels[valid_mask],
                 reduction='sum'
             )
 
             total_loss += loss.item()
-            total_tokens += shift_labels.numel()
+            total_tokens += valid_mask.sum().item()
             num_batches += 1
 
             # Store for Mode 4/5 (move to CPU and free GPU memory immediately)
@@ -373,14 +380,20 @@ def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
                 if 0 <= eval_pos - 1 < eval_mask.shape[0]:
                     eval_mask[eval_pos - 1] = True
 
-            if eval_mask.sum() > 0:
+            # Filter out padding tokens (padding token ID = 50256 for GPT-2)
+            # Only compute loss on non-padding evaluation tokens
+            padding_token_id = 50256
+            non_padding_mask = (shift_labels != padding_token_id)
+            valid_mask = eval_mask & non_padding_mask
+
+            if valid_mask.sum() > 0:
                 loss = F.cross_entropy(
-                    shift_logits[eval_mask],
-                    shift_labels[eval_mask],
+                    shift_logits[valid_mask],
+                    shift_labels[valid_mask],
                     reduction='sum'
                 )
                 total_loss += loss.item()
-                total_tokens += eval_mask.sum().item()
+                total_tokens += valid_mask.sum().item()
 
     avg_loss = total_loss / total_tokens if total_tokens > 0 else 0.0
     perplexity = math.exp(avg_loss) if avg_loss < 20 else float('inf')
@@ -429,14 +442,20 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
                 if 0 <= eval_pos - 1 < eval_mask.shape[0]:
                     eval_mask[eval_pos - 1] = True
 
-            if eval_mask.sum() > 0:
+            # Filter out padding tokens (padding token ID = 50256 for GPT-2)
+            # Only compute loss on non-padding evaluation tokens
+            padding_token_id = 50256
+            non_padding_mask = (shift_labels != padding_token_id)
+            valid_mask = eval_mask & non_padding_mask
+
+            if valid_mask.sum() > 0:
                 loss = F.cross_entropy(
-                    shift_logits[eval_mask],
-                    shift_labels[eval_mask],
+                    shift_logits[valid_mask],
+                    shift_labels[valid_mask],
                     reduction='sum'
                 )
                 total_loss += loss.item()
-                total_tokens += eval_mask.sum().item()
+                total_tokens += valid_mask.sum().item()
 
     avg_loss = total_loss / total_tokens if total_tokens > 0 else 0.0
     perplexity = math.exp(avg_loss) if avg_loss < 20 else float('inf')
