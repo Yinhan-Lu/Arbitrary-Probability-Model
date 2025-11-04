@@ -19,8 +19,10 @@ python3 train_conditional.py \
     --evaluation_sampling blockwise \
     --max_cond_blocks 2 \
     --max_eval_blocks 2 \
-    --conditioning_ratio 0.3 \
-    --evaluation_ratio 0.3 \
+    --cond_pct_min 0.2 \
+    --cond_pct_max 0.4 \
+    --eval_pct_min 0.2 \
+    --eval_pct_max 0.4 \
     --logging_steps 50 \
     --save_steps 500 \
     --output_dir ./experiments \

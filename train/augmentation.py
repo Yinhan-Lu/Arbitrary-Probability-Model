@@ -56,9 +56,6 @@ class ConditionalAugmenter:
         num_evaluation_distribution=None,
         num_eval_blocks_distribution=None,
         eval_block_sizes_distribution=None,
-        # Legacy ratio parameters (for backward compatibility)
-        conditioning_ratio=None,
-        evaluation_ratio=None,
         min_conditioning=1,
         min_evaluation=1,
         include_bos=True,
@@ -68,7 +65,7 @@ class ConditionalAugmenter:
         max_eval_blocks=2,
     ):
         """
-        Initialize augmenter with flexible sampling modes
+        Initialize augmenter with distribution-based sampling
 
         Args:
             mask_token_id: Token ID for [M] mask token
@@ -80,17 +77,13 @@ class ConditionalAugmenter:
             cond_pct_max: Maximum conditioning percentage (default: 0.5)
             tokenizer_pad_token_id: Tokenizer's pad token ID for input_ids padding (default: 50256 for GPT-2)
 
-            Distribution function parameters (recommended):
+            Distribution function parameters (required):
             num_conditioning_distribution: Callable[[int], int] - samples num conditioning tokens from seq_len
             num_blocks_distribution: Callable[[int], int] - samples num blocks from num_items
             block_sizes_distribution: Callable[[int, int], list[int]] - samples block sizes
             num_evaluation_distribution: Callable[[int], int] - samples num evaluation tokens from available_len
             num_eval_blocks_distribution: Callable[[int], int] - samples num eval blocks
             eval_block_sizes_distribution: Callable[[int, int], list[int]] - samples eval block sizes
-
-            Legacy ratio parameters (deprecated, for backward compatibility):
-            conditioning_ratio: Fraction of tokens to use as conditioning (default 0.3)
-            evaluation_ratio: Fraction of tokens to use as evaluation (default 0.3)
 
             Other parameters:
             min_conditioning: Minimum number of conditioning tokens
@@ -117,7 +110,13 @@ class ConditionalAugmenter:
         self.aug_max_len = max_n_cond + 1 + max_seq_len
         self.max_seq_len = max_seq_len
 
-        # Store distribution functions if provided
+        # Validate required distribution functions
+        assert num_conditioning_distribution is not None, \
+            "num_conditioning_distribution must be provided (distribution-based sampling required)"
+        assert num_evaluation_distribution is not None, \
+            "num_evaluation_distribution must be provided (distribution-based sampling required)"
+
+        # Store distribution functions
         self.num_conditioning_distribution = num_conditioning_distribution
         self.num_blocks_distribution = num_blocks_distribution
         self.block_sizes_distribution = block_sizes_distribution
@@ -125,16 +124,11 @@ class ConditionalAugmenter:
         self.num_eval_blocks_distribution = num_eval_blocks_distribution
         self.eval_block_sizes_distribution = eval_block_sizes_distribution
 
-        # Store legacy parameters for backward compatibility
-        self.conditioning_ratio = conditioning_ratio if conditioning_ratio is not None else 0.3
-        self.evaluation_ratio = evaluation_ratio if evaluation_ratio is not None else 0.3
+        # Store other parameters
         self.min_conditioning = min_conditioning
         self.min_evaluation = min_evaluation
         self.max_cond_blocks = max_cond_blocks
         self.max_eval_blocks = max_eval_blocks
-
-        # Determine if using distribution functions or legacy ratios
-        self.use_distributions = num_conditioning_distribution is not None
 
         logger.info(f"ConditionalAugmenter initialized:")
         logger.info(f"  Mask token ID: {mask_token_id}")
@@ -143,28 +137,15 @@ class ConditionalAugmenter:
         logger.info(f"    Max sequence length: {max_seq_len}")
         logger.info(f"    Max conditioning %: {cond_pct_max * 100:.1f}%")
         logger.info(f"    Augmented max length: {self.aug_max_len}")
-        if self.use_distributions:
-            logger.info(f"  Mode: Distribution functions")
-            logger.info(f"  Conditioning sampling: {conditioning_sampling}")
-            logger.info(f"  Evaluation sampling: {evaluation_sampling}")
-        else:
-            logger.info(f"  Mode: Legacy ratios (backward compatible)")
-            logger.info(f"  Conditioning ratio: {self.conditioning_ratio}")
-            logger.info(f"  Evaluation ratio: {self.evaluation_ratio}")
-            logger.info(f"  Conditioning sampling: {conditioning_sampling}")
-            if conditioning_sampling == 'blockwise':
-                logger.info(f"    Max cond blocks: {max_cond_blocks}")
-            logger.info(f"  Evaluation sampling: {evaluation_sampling}")
-            if evaluation_sampling == 'blockwise':
-                logger.info(f"    Max eval blocks: {max_eval_blocks}")
+        logger.info(f"  Mode: Distribution-based sampling")
+        logger.info(f"  Conditioning sampling: {conditioning_sampling}")
+        logger.info(f"  Evaluation sampling: {evaluation_sampling}")
 
     def split_indices(self, seq_len):
         """
         Split sequence indices into conditioning, evaluation, and unknown sets
 
-        Supports flexible sampling modes:
-        - conditioning_sampling: 'blockwise' or 'random'
-        - evaluation_sampling: 'blockwise' or 'random'
+        Uses distribution-based blockwise sampling for both conditioning and evaluation sets.
 
         Args:
             seq_len: Length of original sequence (without BOS)
@@ -172,8 +153,8 @@ class ConditionalAugmenter:
         Returns:
             Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
         """
-        # If using distribution functions, call the bottom-level API directly
-        if self.use_distributions and self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
+        # Only support distribution-based blockwise sampling
+        if self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
             return generate_conditioning_evaluation_sets_blockwise(
                 seq_len=seq_len,
                 num_conditioning_distribution=self.num_conditioning_distribution,
@@ -183,80 +164,13 @@ class ConditionalAugmenter:
                 num_eval_blocks_distribution=self.num_eval_blocks_distribution,
                 eval_block_sizes_distribution=self.eval_block_sizes_distribution,
             )
-
-        # Legacy path: If both are blockwise, use the unified blockwise function with ratios
-        if self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
-            return generate_conditioning_set_blockwise(
-                seq_len=seq_len,
-                conditioning_ratio=self.conditioning_ratio,
-                evaluation_ratio=self.evaluation_ratio,
-                min_conditioning=self.min_conditioning,
-                min_evaluation=self.min_evaluation,
-                max_cond_blocks=self.max_cond_blocks,
-                max_eval_blocks=self.max_eval_blocks,
+        else:
+            raise ValueError(
+                f"Only blockwise sampling is supported. "
+                f"Got conditioning_sampling='{self.conditioning_sampling}', "
+                f"evaluation_sampling='{self.evaluation_sampling}'. "
+                f"Please set both to 'blockwise'."
             )
-
-        # Otherwise, use mixed sampling
-        indices = list(range(seq_len))
-
-        # Determine sizes
-        num_cond = max(self.min_conditioning, int(seq_len * self.conditioning_ratio))
-        num_eval = max(self.min_evaluation, int(seq_len * self.evaluation_ratio))
-
-        # Ensure we don't exceed sequence length
-        num_cond = min(num_cond, seq_len - self.min_evaluation)
-        num_eval = min(num_eval, seq_len - num_cond)
-
-        # Step 1: Sample conditioning set
-        if self.conditioning_sampling == 'blockwise':
-            # Use blockwise for conditioning only
-            conditioning_indices, _, _ = generate_conditioning_set_blockwise(
-                seq_len=seq_len,
-                conditioning_ratio=self.conditioning_ratio,
-                evaluation_ratio=0.0,  # Don't generate eval here
-                min_conditioning=self.min_conditioning,
-                min_evaluation=0,
-                max_cond_blocks=self.max_cond_blocks,
-            )
-        else:  # random
-            conditioning_indices = random.sample(indices, num_cond)
-
-        # Step 2: Calculate available positions for evaluation (exclude conditioning)
-        available_positions = [idx for idx in indices if idx not in conditioning_indices]
-
-        # Step 3: Sample evaluation set from available positions
-        if self.evaluation_sampling == 'blockwise':
-            # Use blockwise for evaluation from available positions
-            if len(available_positions) > 0:
-                # Create a temporary sequence with only available positions
-                eval_seq_len = len(available_positions)
-                target_eval = min(num_eval, eval_seq_len)
-                eval_ratio = target_eval / eval_seq_len if eval_seq_len > 0 else 0.3
-
-                # Sample from available positions using blockwise
-                _, eval_indices_in_available, _ = generate_conditioning_set_blockwise(
-                    seq_len=eval_seq_len,
-                    conditioning_ratio=0.0,  # No conditioning needed
-                    evaluation_ratio=eval_ratio,
-                    min_conditioning=0,
-                    min_evaluation=max(1, target_eval),
-                    max_cond_blocks=1,
-                    max_eval_blocks=self.max_eval_blocks,
-                )
-                # Map back to original indices
-                evaluation_indices = sorted([available_positions[i] for i in eval_indices_in_available])
-            else:
-                evaluation_indices = []
-        else:  # random
-            evaluation_indices = random.sample(available_positions, min(num_eval, len(available_positions)))
-
-        # Step 4: Unknown set = all non-conditioning positions
-        unknown_indices = available_positions
-
-        # Validate the split
-        validate_mask_indices(seq_len, conditioning_indices, evaluation_indices, unknown_indices)
-
-        return conditioning_indices, evaluation_indices, unknown_indices
 
     def augment_sequence(self, input_ids, device='cpu'):
         """
@@ -466,11 +380,26 @@ if __name__ == "__main__":
     BOS_TOKEN_ID = 50256   # Reuse EOS as BOS
     PAD_TOKEN_ID = -100
 
+    from functools import partial
     augmenter = ConditionalAugmenter(
         mask_token_id=MASK_TOKEN_ID,
         bos_token_id=BOS_TOKEN_ID,
-        conditioning_ratio=0.4,
-        evaluation_ratio=0.3
+        max_seq_len=1024,
+        cond_pct_max=0.5,
+        num_conditioning_distribution=partial(
+            uniform_num_conditioning_distribution,
+            conditioning_percentage_range=(0.3, 0.4)
+        ),
+        num_blocks_distribution=uniform_num_blocks_distribution,
+        block_sizes_distribution=uniform_block_sizes_distribution,
+        num_evaluation_distribution=partial(
+            uniform_num_evaluation_distribution,
+            evaluation_percentage_range=(0.2, 0.3)
+        ),
+        num_eval_blocks_distribution=uniform_num_blocks_distribution,
+        eval_block_sizes_distribution=uniform_block_sizes_distribution,
+        conditioning_sampling='blockwise',
+        evaluation_sampling='blockwise',
     )
 
     # Test 1: Single sequence

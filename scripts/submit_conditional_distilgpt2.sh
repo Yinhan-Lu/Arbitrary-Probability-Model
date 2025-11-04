@@ -98,8 +98,10 @@ python3 train_conditional.py \
     --evaluation_sampling blockwise \
     --max_cond_blocks 3 \
     --max_eval_blocks 2 \
-    --conditioning_ratio 0.3 \
-    --evaluation_ratio 0.3 \
+    --cond_pct_min 0.2 \
+    --cond_pct_max 0.4 \
+    --eval_pct_min 0.2 \
+    --eval_pct_max 0.4 \
     --min_conditioning 1 \
     --min_evaluation 1 \
     --logging_steps 100 \

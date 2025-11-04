@@ -134,17 +134,17 @@ class ConditionalTrainer:
 
         # Calculate effective max_length for dataset to account for prefix conditioning overhead
         # Augmented sequence length: N_cond + 1 (BOS) + seq_len
-        # Where N_cond ≈ conditioning_ratio * seq_len
-        # So: augmented_length ≈ (1 + conditioning_ratio) * seq_len + 1
+        # Where N_cond ≤ cond_pct_max * seq_len
+        # So: augmented_length ≤ (1 + cond_pct_max) * seq_len + 1
         # We need: augmented_length ≤ max_seq_len
-        # Therefore: seq_len ≤ (max_seq_len - 1) / (1 + conditioning_ratio)
+        # Therefore: seq_len ≤ (max_seq_len - 1) / (1 + cond_pct_max)
 
-        augmentation_factor = 1.0 + self.args.conditioning_ratio
+        augmentation_factor = 1.0 + self.args.cond_pct_max
         effective_max_length = int((self.config.max_seq_len - 1) / augmentation_factor)
 
         logger.info(f"Adjusting dataset max_length for prefix conditioning:")
         logger.info(f"  Model max_seq_len: {self.config.max_seq_len}")
-        logger.info(f"  Conditioning ratio: {self.args.conditioning_ratio}")
+        logger.info(f"  Max conditioning percentage: {self.args.cond_pct_max}")
         logger.info(f"  Augmentation factor: {augmentation_factor:.2f}x")
         logger.info(f"  Dataset effective max_length: {effective_max_length}")
 
@@ -175,61 +175,41 @@ class ConditionalTrainer:
         else:
             self.val_loader = None
 
-        # Create conditional augmenter
-        if self.args.use_distributions:
-            # Use distribution functions (flexible approach)
-            logger.info("Creating augmenter with distribution functions")
-            logger.info(f"  Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
-            logger.info(f"  Evaluation percentage range: [{self.args.eval_pct_min}, {self.args.eval_pct_max}]")
+        # Create conditional augmenter (distribution-based sampling)
+        logger.info("Creating augmenter with distribution-based sampling")
+        logger.info(f"  Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
+        logger.info(f"  Evaluation percentage range: [{self.args.eval_pct_min}, {self.args.eval_pct_max}]")
 
-            # Create distribution functions using partial
-            num_cond_dist = partial(
-                uniform_num_conditioning_distribution,
-                conditioning_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
-            )
-            # Original design: no max_blocks limit
-            num_cond_blocks_dist = uniform_num_blocks_distribution
+        # Create distribution functions using partial
+        num_cond_dist = partial(
+            uniform_num_conditioning_distribution,
+            conditioning_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
+        )
+        num_cond_blocks_dist = uniform_num_blocks_distribution
 
-            num_eval_dist = partial(
-                uniform_num_evaluation_distribution,
-                evaluation_percentage_range=(self.args.eval_pct_min, self.args.eval_pct_max)
-            )
-            # Original design: no max_blocks limit
-            num_eval_blocks_dist = uniform_num_blocks_distribution
+        num_eval_dist = partial(
+            uniform_num_evaluation_distribution,
+            evaluation_percentage_range=(self.args.eval_pct_min, self.args.eval_pct_max)
+        )
+        num_eval_blocks_dist = uniform_num_blocks_distribution
 
-            self.augmenter = ConditionalAugmenter(
-                mask_token_id=self.mask_token_id,
-                bos_token_id=self.bos_token_id,
-                max_seq_len=effective_max_length,
-                cond_pct_max=self.args.cond_pct_max,
-                tokenizer_pad_token_id=self.tokenizer.pad_token_id,
-                num_conditioning_distribution=num_cond_dist,
-                num_blocks_distribution=num_cond_blocks_dist,
-                block_sizes_distribution=uniform_block_sizes_distribution,
-                num_evaluation_distribution=num_eval_dist,
-                num_eval_blocks_distribution=num_eval_blocks_dist,
-                eval_block_sizes_distribution=uniform_block_sizes_distribution,
-                min_conditioning=self.args.min_conditioning,
-                min_evaluation=self.args.min_evaluation,
-                conditioning_sampling=self.args.conditioning_sampling,
-                evaluation_sampling=self.args.evaluation_sampling,
-            )
-        else:
-            # Legacy ratio-based approach (backward compatible)
-            logger.info("Creating augmenter with legacy ratio-based approach")
-            self.augmenter = ConditionalAugmenter(
-                mask_token_id=self.mask_token_id,
-                bos_token_id=self.bos_token_id,
-                max_seq_len=effective_max_length,
-                cond_pct_max=self.args.conditioning_ratio,
-                tokenizer_pad_token_id=self.tokenizer.pad_token_id,
-                conditioning_ratio=self.args.conditioning_ratio,
-                evaluation_ratio=self.args.evaluation_ratio,
-                min_conditioning=self.args.min_conditioning,
-                min_evaluation=self.args.min_evaluation,
-                conditioning_sampling=self.args.conditioning_sampling,
-                evaluation_sampling=self.args.evaluation_sampling,
-            )
+        self.augmenter = ConditionalAugmenter(
+            mask_token_id=self.mask_token_id,
+            bos_token_id=self.bos_token_id,
+            max_seq_len=effective_max_length,
+            cond_pct_max=self.args.cond_pct_max,
+            tokenizer_pad_token_id=self.tokenizer.pad_token_id,
+            num_conditioning_distribution=num_cond_dist,
+            num_blocks_distribution=num_cond_blocks_dist,
+            block_sizes_distribution=uniform_block_sizes_distribution,
+            num_evaluation_distribution=num_eval_dist,
+            num_eval_blocks_distribution=num_eval_blocks_dist,
+            eval_block_sizes_distribution=uniform_block_sizes_distribution,
+            min_conditioning=self.args.min_conditioning,
+            min_evaluation=self.args.min_evaluation,
+            conditioning_sampling=self.args.conditioning_sampling,
+            evaluation_sampling=self.args.evaluation_sampling,
+        )
 
     def _setup_optimizer(self):
         """Setup optimizer and learning rate scheduler"""
@@ -293,8 +273,8 @@ class ConditionalTrainer:
         logger.info("=" * 80)
         logger.info(f"Total epochs: {self.args.num_epochs}")
         logger.info(f"Total steps: {self.total_steps}")
-        logger.info(f"Conditioning ratio: {self.args.conditioning_ratio}")
-        logger.info(f"Evaluation ratio: {self.args.evaluation_ratio}")
+        logger.info(f"Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
+        logger.info(f"Evaluation percentage range: [{self.args.eval_pct_min}, {self.args.eval_pct_max}]")
         logger.info("=" * 80)
 
         self.model.train()
@@ -613,24 +593,15 @@ def parse_args():
     parser.add_argument("--warmup_steps", type=int, default=2000,
                         help="Number of warmup steps")
 
-    # Conditional modeling arguments
-    # Distribution-based parameters (recommended, more flexible)
-    parser.add_argument("--use_distributions", action="store_true",
-                        help="Use distribution functions instead of fixed ratios for sampling")
+    # Conditional modeling arguments (distribution-based sampling)
     parser.add_argument("--cond_pct_min", type=float, default=0.2,
-                        help="Minimum percentage for conditioning tokens (when use_distributions=True)")
+                        help="Minimum percentage for conditioning tokens")
     parser.add_argument("--cond_pct_max", type=float, default=0.4,
-                        help="Maximum percentage for conditioning tokens (when use_distributions=True)")
+                        help="Maximum percentage for conditioning tokens")
     parser.add_argument("--eval_pct_min", type=float, default=0.2,
-                        help="Minimum percentage for evaluation tokens (when use_distributions=True)")
+                        help="Minimum percentage for evaluation tokens")
     parser.add_argument("--eval_pct_max", type=float, default=0.4,
-                        help="Maximum percentage for evaluation tokens (when use_distributions=True)")
-
-    # Legacy ratio parameters (for backward compatibility)
-    parser.add_argument("--conditioning_ratio", type=float, default=0.3,
-                        help="Fraction of tokens to use as conditioning (legacy, ignored if use_distributions=True)")
-    parser.add_argument("--evaluation_ratio", type=float, default=0.3,
-                        help="Fraction of tokens to use as evaluation (legacy, ignored if use_distributions=True)")
+                        help="Maximum percentage for evaluation tokens")
 
     # Common parameters
     parser.add_argument("--min_conditioning", type=int, default=1,
