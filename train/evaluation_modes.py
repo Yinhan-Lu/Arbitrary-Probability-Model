@@ -515,13 +515,18 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, t
     return {
         'mode1_loss': metrics_mode1['loss'],
         'mode1_ppl': metrics_mode1['perplexity'],
+        'mode1_tokens': metrics_mode1['total_tokens'],
         'mode2_loss': metrics_mode2['loss'],
         'mode2_ppl': metrics_mode2['perplexity'],
+        'mode2_tokens': metrics_mode2['total_tokens'],
         'mode3_loss': metrics_mode3['loss'],
         'mode3_ppl': metrics_mode3['perplexity'],
+        'mode3_tokens': metrics_mode3['total_tokens'],
         'mode4_loss': metrics_mode4['loss'],
         'mode4_ppl': metrics_mode4['perplexity'],
+        'mode4_tokens': metrics_mode4['total_tokens'],
         'mode5_loss': metrics_mode5['loss'],
         'mode5_ppl': metrics_mode5['perplexity'],
+        'mode5_tokens': metrics_mode5['total_tokens'],
         'num_batches': metrics_mode1['num_batches'],
     }
