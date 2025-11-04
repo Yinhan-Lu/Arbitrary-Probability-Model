@@ -114,7 +114,11 @@ class ExperimentPlotter:
         n_rows = (n_metrics + 1) // 2
 
         fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
-        axes = axes.flatten() if n_metrics > 1 else [axes]
+        # Always flatten axes to ensure it's a 1D array
+        if isinstance(axes, np.ndarray):
+            axes = axes.flatten()
+        else:
+            axes = [axes]
 
         exp_name = self.loader.exp_dir.name
 
@@ -181,7 +185,11 @@ class ExperimentPlotter:
         n_rows = (n_metrics + 1) // 2
 
         fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
-        axes = axes.flatten() if n_metrics > 1 else [axes]
+        # Always flatten axes to ensure it's a 1D array
+        if isinstance(axes, np.ndarray):
+            axes = axes.flatten()
+        else:
+            axes = [axes]
 
         colors = plt.cm.tab10(np.linspace(0, 1, len(all_metrics)))
 
@@ -267,12 +275,15 @@ class ExperimentPlotter:
         ax1.grid(True, alpha=0.3)
 
         # Plot 2: Loss per epoch (box plot)
-        epoch_data = [group[metric].values for _, group in data.groupby('epoch')]
         epochs = sorted(data['epoch'].unique())
+        # Group by epoch in the correct order
+        epoch_data = [data[data['epoch'] == epoch][metric].values for epoch in epochs]
 
-        bp = ax2.boxplot(epoch_data, labels=epochs, patch_artist=True,
-                        boxprops=dict(facecolor='lightblue', alpha=0.7),
-                        medianprops=dict(color='red', linewidth=2))
+        # Only plot if we have data
+        if len(epoch_data) > 0 and all(len(d) > 0 for d in epoch_data):
+            bp = ax2.boxplot(epoch_data, labels=epochs, patch_artist=True,
+                            boxprops=dict(facecolor='lightblue', alpha=0.7),
+                            medianprops=dict(color='red', linewidth=2))
 
         ax2.set_xlabel('Epoch')
         ax2.set_ylabel(metric.replace('_', ' ').title())
@@ -539,9 +550,12 @@ Grad Accum: {config.get('gradient_accumulation_steps', 'N/A')}
         if 'train_loss' in df.columns and 'epoch' in df.columns:
             data = df[['epoch', 'train_loss']].dropna()
             epochs = sorted(data['epoch'].unique())
-            epoch_data = [group['train_loss'].values for _, group in data.groupby('epoch')]
-            ax7.boxplot(epoch_data, labels=epochs, patch_artist=True,
-                       boxprops=dict(facecolor='lightcoral', alpha=0.7))
+            # Group by epoch in the correct order
+            epoch_data = [data[data['epoch'] == epoch]['train_loss'].values for epoch in epochs]
+            # Only plot if we have data
+            if len(epoch_data) > 0 and all(len(d) > 0 for d in epoch_data):
+                ax7.boxplot(epoch_data, labels=epochs, patch_artist=True,
+                           boxprops=dict(facecolor='lightcoral', alpha=0.7))
         ax7.set_xlabel('Epoch')
         ax7.set_ylabel('Loss')
         ax7.set_title('Loss per Epoch')

@@ -339,8 +339,8 @@ class ConditionalTrainer:
                         metrics = {
                             'step': self.global_step,
                             'epoch': epoch + 1,
-                            'loss': avg_loss,
-                            'perplexity': perplexity,
+                            'train_loss': avg_loss,
+                            'train_perplexity': perplexity,
                             'learning_rate': lr
                         }
                         self._log_to_csv(metrics)
