@@ -208,7 +208,7 @@ class ConditionalAugmenter:
         cond_position_ids = []
         for idx in sorted(cond_idx):
             cond_tokens.append(input_ids[idx].item())
-            cond_position_ids.append(idx + 1)  # Original positions start from 1
+            cond_position_ids.append(idx)  # Use 0-indexed positions (0 to seq_len-1)
         N_cond = len(cond_tokens)
 
         # Step 3: Build sequence tokens (BOS + Body)
@@ -221,7 +221,7 @@ class ConditionalAugmenter:
                 seq_tokens.append(self.mask_token_id)  # Mask unknown
             else:
                 seq_tokens.append(input_ids[i].item())  # Keep cond + eval
-            seq_position_ids.append(i + 1)  # Original positions 1, 2, 3, ...
+            seq_position_ids.append(i)  # Use 0-indexed positions (0 to seq_len-1)
         N_seq = len(seq_tokens)
 
         # Step 4: Concatenate [Cond] + [Seq]

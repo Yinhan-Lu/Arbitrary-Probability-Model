@@ -167,7 +167,7 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                 # Augment sequence (manually, similar to augmenter.augment_sequence)
                 # Build prefix (conditioning tokens)
                 cond_tokens = [sample_ids[idx].item() for idx in sorted(cond_idx)]
-                cond_position_ids = [idx + 1 for idx in sorted(cond_idx)]
+                cond_position_ids = [idx for idx in sorted(cond_idx)]  # Use 0-indexed positions
                 N_cond = len(cond_tokens)
 
                 # Build body (BOS + masked body)
@@ -182,7 +182,7 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                         seq_tokens.append(mask_token_id)  # Mask unknown (which = eval for Mode 2)
                     else:
                         seq_tokens.append(sample_ids[j].item())  # Keep conditioning
-                    seq_position_ids.append(j + 1)
+                    seq_position_ids.append(j)  # Use 0-indexed positions
 
                 N_seq = len(seq_tokens)
 
