@@ -312,7 +312,8 @@ class ConditionalTrainer:
 
                     # Logging
                     if self.global_step % self.args.logging_steps == 0:
-                        avg_loss = running_loss / self.args.logging_steps
+                        # Average over actual number of batches (logging_steps * gradient_accumulation_steps)
+                        avg_loss = running_loss / (self.args.logging_steps * self.args.gradient_accumulation_steps)
                         perplexity = torch.exp(torch.tensor(avg_loss)).item()
                         lr = self.optimizer.param_groups[0]["lr"]
 
