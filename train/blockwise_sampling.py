@@ -115,7 +115,7 @@ def generate_conditioning_evaluation_sets_blockwise(
         )
 
     # Validate output
-    _validate_sets(seq_len, conditioning_indices, evaluation_indices, unknown_indices)
+    _validate_sets(seq_len, conditioning_indices, evaluation_indices, unknown_indices, valid_positions=valid_positions)
 
     logger.debug(
         f"Blockwise sampling: seq_len={seq_len}, "
@@ -344,8 +344,17 @@ def _find_contiguous_segments(positions: list[int]) -> list[list[int]]:
     return segments
 
 
-def _validate_sets(seq_len, conditioning_indices, evaluation_indices, unknown_indices):
-    """Validate the three sets satisfy required properties."""
+def _validate_sets(seq_len, conditioning_indices, evaluation_indices, unknown_indices, valid_positions=None):
+    """Validate the three sets satisfy required properties.
+
+    Args:
+        seq_len: Sequence length
+        conditioning_indices: Conditioning indices
+        evaluation_indices: Evaluation indices
+        unknown_indices: Unknown indices
+        valid_positions: Optional list of valid positions. If provided, checks coverage against
+                        valid_positions instead of range(seq_len).
+    """
     cond_set = set(conditioning_indices)
     eval_set = set(evaluation_indices)
     unknown_set = set(unknown_indices)
@@ -359,8 +368,15 @@ def _validate_sets(seq_len, conditioning_indices, evaluation_indices, unknown_in
         "Evaluation set must be subset of unknown set"
 
     # Check coverage
-    assert cond_set | unknown_set == set(range(seq_len)), \
-        "Conditioning and unknown sets must cover all positions"
+    if valid_positions is not None:
+        # When using valid_positions, check coverage against valid positions only
+        expected_coverage = set(valid_positions)
+    else:
+        # Default: check coverage against all positions
+        expected_coverage = set(range(seq_len))
+
+    assert cond_set | unknown_set == expected_coverage, \
+        f"Conditioning and unknown sets must cover all {'valid' if valid_positions is not None else ''} positions"
 
 
 # =============================================================================
