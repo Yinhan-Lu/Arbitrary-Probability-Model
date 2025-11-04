@@ -85,9 +85,11 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
             total_tokens += shift_labels.numel()
             num_batches += 1
 
-            # Store for Mode 4/5
+            # Store for Mode 4/5 (move to CPU and free GPU memory immediately)
             all_logits.append(logits.cpu())
             all_labels.append(input_ids.cpu())
+            del logits, input_ids  # Free GPU memory
+            torch.cuda.empty_cache()  # Clear cache
 
     avg_loss = total_loss / total_tokens if total_tokens > 0 else 0.0
     perplexity = math.exp(avg_loss) if avg_loss < 20 else float('inf')

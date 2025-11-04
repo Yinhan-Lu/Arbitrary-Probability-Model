@@ -78,7 +78,7 @@ python3 ./train_conditional.py \
     --eval_steps 100 \
     --save_steps 500 \
     --do_eval \
-    --max_eval_batches 20 \
+    --max_eval_batches 5 \
     --output_dir $OUTPUT_DIR \
     --exp_name $EXP_NAME \
     --device cuda \
