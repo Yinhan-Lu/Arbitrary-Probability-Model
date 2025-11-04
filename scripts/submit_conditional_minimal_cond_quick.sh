@@ -64,7 +64,6 @@ python3 ./train_conditional.py \
     --warmup_steps 100 \
     --max_grad_norm 1.0 \
     --weight_decay 0.01 \
-    --use_distributions \
     --cond_pct_min 0.0 \
     --cond_pct_max 0.1 \
     --eval_pct_min 1.0 \

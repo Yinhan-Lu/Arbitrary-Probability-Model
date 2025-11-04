@@ -63,7 +63,6 @@ python3 ./train_conditional.py \
     --warmup_steps 50 \
     --max_grad_norm 1.0 \
     --weight_decay 0.01 \
-    --use_distributions \
     --cond_pct_min 0.0 \
     --cond_pct_max 0.1 \
     --eval_pct_min 1.0 \
@@ -72,6 +71,8 @@ python3 ./train_conditional.py \
     --evaluation_sampling blockwise \
     --min_conditioning 0 \
     --min_evaluation 1 \
+    --mode2_boundary_cond_pct_min 0.1 \
+    --mode2_boundary_cond_pct_max 0.3 \
     --logging_steps 5 \
     --eval_steps 50 \
     --save_steps 200 \
