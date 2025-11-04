@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from model.config import get_config
 from model.arbitrary_prob_gpt2 import GPT2Model
 from model.token_manager import TokenManager
-from train.dataset import get_dataloader
+from train.dataset import get_dataloader, create_augment_collate_fn, create_simple_collate_fn
 from train.augmentation import ConditionalAugmenter
 from train.blockwise_sampling import (
     uniform_num_conditioning_distribution,
@@ -156,29 +156,8 @@ class ConditionalTrainer:
         dataset_config = copy(self.config)
         dataset_config.max_seq_len = self.body_seq_len  # Dataloader provides body tokens only
 
-        # Note: Using standard dataloader, will augment in training loop
-        self.train_loader = get_dataloader(
-            config=dataset_config,
-            split="train",
-            batch_size=self.args.batch_size,
-            num_workers=self.args.num_workers,
-            streaming=False,
-            num_samples=self.args.num_train_samples
-        )
-
-        if self.args.do_eval:
-            self.val_loader = get_dataloader(
-                config=dataset_config,
-                split="validation",
-                batch_size=self.args.eval_batch_size,
-                num_workers=self.args.num_workers,
-                streaming=False,
-                num_samples=self.args.num_eval_samples
-            )
-        else:
-            self.val_loader = None
-
-        # Create conditional augmenter (distribution-based sampling)
+        # Create conditional augmenter BEFORE dataloaders
+        # This allows us to use augment-first, then dynamic padding approach
         logger.info("Creating augmenter with distribution-based sampling")
         logger.info(f"  Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
         logger.info(f"  Evaluation percentage range: [{self.args.eval_pct_min}, {self.args.eval_pct_max}]")
@@ -213,6 +192,38 @@ class ConditionalTrainer:
             conditioning_sampling=self.args.conditioning_sampling,
             evaluation_sampling=self.args.evaluation_sampling,
         )
+
+        # Create collate function that does augmentation + dynamic padding
+        # This is OPTIMAL: augment first, then single dynamic padding to max in batch
+        logger.info("Creating augment collate function for dynamic padding optimization")
+        train_collate_fn = create_augment_collate_fn(self.augmenter, device='cpu')
+
+        # Note: Using augment collate function for optimal single-pass dynamic padding
+        self.train_loader = get_dataloader(
+            config=dataset_config,
+            split="train",
+            batch_size=self.args.batch_size,
+            num_workers=self.args.num_workers,
+            streaming=False,
+            num_samples=self.args.num_train_samples,
+            collate_fn=train_collate_fn
+        )
+
+        if self.args.do_eval:
+            # Validation dataloader with simple dynamic padding (no augmentation)
+            # Evaluation modes apply their own augmentation strategies
+            val_collate_fn = create_simple_collate_fn(pad_token_id=self.tokenizer.pad_token_id)
+            self.val_loader = get_dataloader(
+                config=dataset_config,
+                split="validation",
+                batch_size=self.args.eval_batch_size,
+                num_workers=self.args.num_workers,
+                streaming=False,
+                num_samples=self.args.num_eval_samples,
+                collate_fn=val_collate_fn  # Use simple collate (dynamic padding only)
+            )
+        else:
+            self.val_loader = None
 
     def _setup_optimizer(self):
         """Setup optimizer and learning rate scheduler"""
@@ -249,20 +260,22 @@ class ConditionalTrainer:
         )
 
     def train_step(self, batch):
-        """Single training step with conditional augmentation"""
-        # Get original input
+        """Single training step with conditional augmentation
+
+        Note: Augmentation is now done in collate_fn for optimal single-pass dynamic padding
+        """
+        # Move augmented batch to device (augmentation already done in collate_fn)
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
+        labels = batch["labels"].to(self.device)
+        position_ids = batch["position_ids"].to(self.device)
 
-        # Apply conditional augmentation (with attention_mask for valid position filtering)
-        aug_batch = self.augmenter.augment_batch(input_ids, device=self.device, attention_mask=attention_mask)
-
-        # Forward pass with custom attention mask and position ids
+        # Forward pass with augmented inputs
         logits, loss = self.model(
-            input_ids=aug_batch["input_ids"],
-            attention_mask=aug_batch["attention_mask"],
-            labels=aug_batch["labels"],
-            position_ids=aug_batch["position_ids"]
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            position_ids=position_ids
         )
 
         # Scale loss for gradient accumulation

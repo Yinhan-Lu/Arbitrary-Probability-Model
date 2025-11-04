@@ -214,12 +214,12 @@ class WikipediaDataset(Dataset):
             # (we need to return something for indexing to work)
             text = "This is a placeholder text."
 
-        # Tokenize
+        # Tokenize (no padding - will be done dynamically in collate_fn)
         encoding = self.tokenizer(
             text,
             max_length=self.max_length,
             truncation=True,
-            padding="max_length",
+            padding=False,
             return_tensors="pt"
         )
 
@@ -306,14 +306,16 @@ class StreamingWikipediaDataset:
 
             # Skip empty or very short texts (WikiText has many empty lines)
             if not text or len(text.strip()) < 10:
-                continue
+                # Return a minimal valid sample instead of skipping
+                # (we need to return something for indexing to work)
+                text = "This is a placeholder text."
 
-            # Tokenize
+            # Tokenize (no padding - will be done dynamically in collate_fn)
             encoding = self.tokenizer(
                 text,
                 max_length=self.max_length,
                 truncation=True,
-                padding="max_length",
+                padding=False,
                 return_tensors="pt"
             )
 
@@ -322,6 +324,179 @@ class StreamingWikipediaDataset:
                 "input_ids": encoding["input_ids"].squeeze(0).clone(),
                 "attention_mask": encoding["attention_mask"].squeeze(0).clone()
             }
+
+
+def create_simple_collate_fn(pad_token_id=50256):
+    """
+    Create simple collate function that only does dynamic padding (no augmentation)
+
+    Used for validation dataloaders where evaluation modes apply their own augmentation.
+
+    Args:
+        pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
+
+    Returns:
+        collate_fn function for DataLoader
+    """
+    def simple_collate_fn(batch):
+        """
+        Collate function: dynamic padding only, no augmentation
+
+        Args:
+            batch: List of dicts with 'input_ids' and 'attention_mask'
+
+        Returns:
+            Batched dict with dynamically padded tensors:
+            - input_ids: (batch_size, max_len)
+            - attention_mask: (batch_size, max_len)
+        """
+        # Find max length in batch
+        max_len = max(item['input_ids'].size(0) for item in batch)
+
+        # Pad each sample
+        batch_input_ids = []
+        batch_attention_masks = []
+
+        for item in batch:
+            input_ids = item['input_ids']
+            attention_mask = item['attention_mask']
+            current_len = input_ids.size(0)
+            pad_len = max_len - current_len
+
+            if pad_len > 0:
+                # Pad input_ids
+                padded_input = torch.cat([
+                    input_ids,
+                    torch.full((pad_len,), pad_token_id, dtype=torch.long)
+                ])
+
+                # Pad attention_mask
+                padded_mask = torch.cat([
+                    attention_mask,
+                    torch.zeros(pad_len, dtype=torch.long)
+                ])
+            else:
+                padded_input = input_ids
+                padded_mask = attention_mask
+
+            batch_input_ids.append(padded_input)
+            batch_attention_masks.append(padded_mask)
+
+        # Stack into batch tensors
+        return {
+            'input_ids': torch.stack(batch_input_ids),
+            'attention_mask': torch.stack(batch_attention_masks)
+        }
+
+    return simple_collate_fn
+
+
+def create_augment_collate_fn(augmenter, device='cpu'):
+    """
+    Create collate function that does augmentation + dynamic padding
+
+    This is the optimal approach: augment first, then dynamically pad to
+    the longest augmented sequence in the batch (single padding pass).
+
+    Args:
+        augmenter: ConditionalAugmenter instance
+        device: Device for augmentation ('cpu' recommended for DataLoader workers)
+
+    Returns:
+        collate_fn function for DataLoader
+    """
+    def augment_collate_fn(batch):
+        """
+        Collate function: augment each sample, then dynamic padding
+
+        Args:
+            batch: List of dicts with 'input_ids' and 'attention_mask'
+
+        Returns:
+            Batched dict with augmented and dynamically padded tensors:
+            - input_ids: (batch_size, max_aug_len)
+            - position_ids: (batch_size, max_aug_len)
+            - labels: (batch_size, max_aug_len)
+            - attention_mask: (batch_size, 1, max_aug_len, max_aug_len)
+        """
+        # Step 1: Augment each sample
+        augmented_samples = []
+        for item in batch:
+            # Extract sequences (remove batch dim from tokenizer)
+            input_ids = item['input_ids'].squeeze(0) if item['input_ids'].dim() > 1 else item['input_ids']
+            attention_mask = item['attention_mask'].squeeze(0) if item['attention_mask'].dim() > 1 else item['attention_mask']
+
+            # Find valid (non-padding) positions
+            valid_positions = [i for i in range(len(input_ids)) if attention_mask[i] == 1]
+
+            # Augment this sample
+            aug_result = augmenter.augment_sequence(
+                input_ids,
+                device=device,
+                valid_positions=valid_positions
+            )
+            augmented_samples.append(aug_result)
+
+        # Step 2: Find max length in augmented batch
+        max_len = max(sample['aug_input_ids'].size(0) for sample in augmented_samples)
+
+        # Step 3: Dynamic padding to max_len
+        batch_input_ids = []
+        batch_position_ids = []
+        batch_labels = []
+        batch_attention_masks = []
+
+        for sample in augmented_samples:
+            current_len = sample['aug_input_ids'].size(0)
+            pad_len = max_len - current_len
+
+            if pad_len > 0:
+                # Pad input_ids with pad token (50256 for GPT-2)
+                padded_input = torch.cat([
+                    sample['aug_input_ids'],
+                    torch.full((pad_len,), 50256, dtype=torch.long, device=device)
+                ])
+
+                # Pad position_ids with 0
+                padded_position = torch.cat([
+                    sample['position_ids'],
+                    torch.zeros(pad_len, dtype=torch.long, device=device)
+                ])
+
+                # Pad labels with -100 (ignored by loss function)
+                padded_label = torch.cat([
+                    sample['labels'],
+                    torch.full((pad_len,), -100, dtype=torch.long, device=device)
+                ])
+
+                # Pad attention mask (2D matrix)
+                # Original shape: (current_len, current_len)
+                # Target shape: (max_len, max_len)
+                padded_mask = torch.zeros(max_len, max_len, dtype=sample['attention_mask'].dtype, device=device)
+                padded_mask[:current_len, :current_len] = sample['attention_mask']
+                # Let padding positions attend to valid content (prevents softmax NaN)
+                padded_mask[current_len:, :current_len] = 1
+            else:
+                # No padding needed
+                padded_input = sample['aug_input_ids']
+                padded_position = sample['position_ids']
+                padded_label = sample['labels']
+                padded_mask = sample['attention_mask']
+
+            batch_input_ids.append(padded_input)
+            batch_position_ids.append(padded_position)
+            batch_labels.append(padded_label)
+            batch_attention_masks.append(padded_mask)
+
+        # Step 4: Stack into batch tensors
+        return {
+            'input_ids': torch.stack(batch_input_ids),
+            'position_ids': torch.stack(batch_position_ids),
+            'labels': torch.stack(batch_labels),
+            'attention_mask': torch.stack(batch_attention_masks).unsqueeze(1),  # Add head dim: (B, 1, L, L)
+        }
+
+    return augment_collate_fn
 
 
 def get_dataloader(
@@ -333,7 +508,8 @@ def get_dataloader(
     num_samples=None,
     dataset_name="wikitext",
     dataset_config="wikitext-103-raw-v1",
-    primary_dataset_only=True
+    primary_dataset_only=True,
+    collate_fn=None
 ):
     """
     Create a DataLoader for Wikipedia dataset
@@ -348,6 +524,7 @@ def get_dataloader(
         dataset_name: Hugging Face dataset name
         dataset_config: Dataset configuration/version
         primary_dataset_only: If True, only use specified dataset without fallback
+        collate_fn: Optional custom collate function for batching
 
     Returns:
         DataLoader instance
@@ -400,7 +577,8 @@ def get_dataloader(
             batch_size=batch_size,
             shuffle=(split == "train"),
             num_workers=num_workers,
-            pin_memory=True
+            pin_memory=True,
+            collate_fn=collate_fn
         )
 
         return dataloader
