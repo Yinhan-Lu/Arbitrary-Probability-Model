@@ -141,7 +141,7 @@ class ConditionalAugmenter:
         logger.info(f"  Conditioning sampling: {conditioning_sampling}")
         logger.info(f"  Evaluation sampling: {evaluation_sampling}")
 
-    def split_indices(self, seq_len):
+    def split_indices(self, seq_len, valid_positions=None):
         """
         Split sequence indices into conditioning, evaluation, and unknown sets
 
@@ -149,6 +149,9 @@ class ConditionalAugmenter:
 
         Args:
             seq_len: Length of original sequence (without BOS)
+            valid_positions: Optional list of valid positions to sample from (e.g., non-padding).
+                           If provided, all sampling only occurs within these positions.
+                           If None, samples from range(seq_len).
 
         Returns:
             Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
@@ -163,6 +166,7 @@ class ConditionalAugmenter:
                 num_evaluation_distribution=self.num_evaluation_distribution,
                 num_eval_blocks_distribution=self.num_eval_blocks_distribution,
                 eval_block_sizes_distribution=self.eval_block_sizes_distribution,
+                valid_positions=valid_positions,
             )
         else:
             raise ValueError(
@@ -172,7 +176,7 @@ class ConditionalAugmenter:
                 f"Please set both to 'blockwise'."
             )
 
-    def augment_sequence(self, input_ids, device='cpu'):
+    def augment_sequence(self, input_ids, device='cpu', valid_positions=None):
         """
         Augment sequence using concatenation-based prefix conditioning
 
@@ -185,6 +189,9 @@ class ConditionalAugmenter:
         Args:
             input_ids: Original sequence tensor of shape (seq_len,)
             device: Device to create tensors on
+            valid_positions: Optional list of valid positions to sample from (e.g., non-padding).
+                           If provided, all sampling only occurs within these positions.
+                           If None, infers from input_ids (non-padding positions).
 
         Returns:
             Dictionary containing:
@@ -200,8 +207,15 @@ class ConditionalAugmenter:
         """
         seq_len = input_ids.size(0)
 
+        # Infer valid_positions if not provided (filter out padding tokens)
+        if valid_positions is None:
+            padding_token_id = self.tokenizer.pad_token_id
+            if padding_token_id is None:
+                padding_token_id = 50256  # GPT-2 default
+            valid_positions = [i for i in range(seq_len) if input_ids[i] != padding_token_id]
+
         # Step 1: Get three sets (conditioning, evaluation, unknown)
-        cond_idx, eval_idx, unknown_idx = self.split_indices(seq_len)
+        cond_idx, eval_idx, unknown_idx = self.split_indices(seq_len, valid_positions=valid_positions)
 
         # Step 2: Build conditioning tokens (prefix)
         cond_tokens = []
@@ -269,13 +283,17 @@ class ConditionalAugmenter:
             "N_seq": N_seq
         }
 
-    def augment_batch(self, input_ids_batch, device='cpu'):
+    def augment_batch(self, input_ids_batch, device='cpu', attention_mask=None):
         """
         Augment a batch of sequences
 
         Args:
             input_ids_batch: Tensor of shape (batch_size, seq_len)
             device: Device to create tensors on
+            attention_mask: Optional tensor of shape (batch_size, seq_len) indicating valid positions.
+                          1 = valid token, 0 = padding.
+                          If provided, sampling only occurs within valid positions.
+                          If None, infers from input_ids (non-padding positions).
 
         Returns:
             Dictionary containing batched tensors:
@@ -285,6 +303,7 @@ class ConditionalAugmenter:
             - labels: (batch_size, aug_seq_len)
         """
         batch_size = input_ids_batch.size(0)
+        seq_len = input_ids_batch.size(1)
 
         aug_inputs = []
         aug_positions = []
@@ -292,7 +311,13 @@ class ConditionalAugmenter:
         aug_labels = []
 
         for i in range(batch_size):
-            result = self.augment_sequence(input_ids_batch[i], device=device)
+            # Extract valid positions for this sample if attention_mask provided
+            valid_positions = None
+            if attention_mask is not None:
+                sample_attention_mask = attention_mask[i]
+                valid_positions = [j for j in range(seq_len) if sample_attention_mask[j] == 1]
+
+            result = self.augment_sequence(input_ids_batch[i], device=device, valid_positions=valid_positions)
 
             aug_inputs.append(result["aug_input_ids"])
             aug_positions.append(result["position_ids"])

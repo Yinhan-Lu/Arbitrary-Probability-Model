@@ -252,9 +252,10 @@ class ConditionalTrainer:
         """Single training step with conditional augmentation"""
         # Get original input
         input_ids = batch["input_ids"].to(self.device)
+        attention_mask = batch["attention_mask"].to(self.device)
 
-        # Apply conditional augmentation
-        aug_batch = self.augmenter.augment_batch(input_ids, device=self.device)
+        # Apply conditional augmentation (with attention_mask for valid position filtering)
+        aug_batch = self.augmenter.augment_batch(input_ids, device=self.device, attention_mask=attention_mask)
 
         # Forward pass with custom attention mask and position ids
         logits, loss = self.model(

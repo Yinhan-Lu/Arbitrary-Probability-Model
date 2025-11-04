@@ -156,6 +156,7 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                 break
 
             input_ids = batch['input_ids'].to(device)
+            attention_mask_1d = batch['attention_mask'].to(device)
             batch_size, seq_len = input_ids.shape
 
             batch_loss = 0.0
@@ -165,11 +166,16 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
             # Process each sample in batch
             for i in range(batch_size):
                 sample_ids = input_ids[i]
+                sample_attention_mask = attention_mask_1d[i]
 
-                # Generate boundary split with distribution
+                # Get valid (non-padding) positions
+                valid_positions = [j for j in range(seq_len) if sample_attention_mask[j] == 1]
+
+                # Generate boundary split with distribution (only from valid positions)
                 cond_idx, eval_idx, unknown_idx = generate_boundary_conditioning_split(
                     seq_len,
-                    boundary_block_sizes_distribution=boundary_distribution
+                    boundary_block_sizes_distribution=boundary_distribution,
+                    valid_positions=valid_positions
                 )
                 batch_eval_indices.append(eval_idx)
 
@@ -225,18 +231,6 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
 
                 valid_mask = (shift_labels != -100)
                 if valid_mask.sum() > 0:
-                    # DEBUG: Check how many evaluation positions are padding tokens
-                    padding_token_id = 50256
-                    eval_tokens = shift_labels[valid_mask]
-                    num_padding_in_eval = (eval_tokens == padding_token_id).sum().item()
-                    num_real_in_eval = (eval_tokens != padding_token_id).sum().item()
-
-                    if i == 0 and batch_idx == 0:  # Log first sample of first batch
-                        logger.info(f"Mode 2 Debug: eval positions = {valid_mask.sum().item()}, "
-                                   f"padding = {num_padding_in_eval}, "
-                                   f"real tokens = {num_real_in_eval}, "
-                                   f"padding% = {100*num_padding_in_eval/valid_mask.sum().item():.1f}%")
-
                     loss = F.cross_entropy(
                         shift_logits[valid_mask],
                         shift_labels[valid_mask],
@@ -292,6 +286,7 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
                 break
 
             input_ids = batch['input_ids'].to(device)
+            attention_mask_1d = batch['attention_mask'].to(device)
             batch_size, seq_len = input_ids.shape
 
             batch_loss = 0.0
@@ -302,12 +297,16 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
             # This avoids the need for padding different-length sequences
             for i in range(batch_size):
                 sample_ids = input_ids[i]
+                sample_attention_mask = attention_mask_1d[i]
 
-                # Augment single sequence
-                result = augmenter.augment_sequence(sample_ids, device=device)
+                # Get valid (non-padding) positions
+                valid_positions = [j for j in range(seq_len) if sample_attention_mask[j] == 1]
 
-                # Collect evaluation indices
-                cond_idx, eval_idx, unknown_idx = augmenter.split_indices(seq_len)
+                # Augment single sequence (with valid positions)
+                result = augmenter.augment_sequence(sample_ids, device=device, valid_positions=valid_positions)
+
+                # Collect evaluation indices (with valid positions)
+                cond_idx, eval_idx, unknown_idx = augmenter.split_indices(seq_len, valid_positions=valid_positions)
                 batch_eval_indices.append(eval_idx)
 
                 # Forward pass for this single sample
@@ -326,18 +325,6 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
 
                 valid_mask = (shift_labels != -100)
                 if valid_mask.sum() > 0:
-                    # DEBUG: Check how many evaluation positions are padding tokens
-                    padding_token_id = 50256
-                    eval_tokens = shift_labels[valid_mask]
-                    num_padding_in_eval = (eval_tokens == padding_token_id).sum().item()
-                    num_real_in_eval = (eval_tokens != padding_token_id).sum().item()
-
-                    if i == 0 and batch_idx == 0:  # Log first sample of first batch
-                        logger.info(f"Mode 3 Debug: eval positions = {valid_mask.sum().item()}, "
-                                   f"padding = {num_padding_in_eval}, "
-                                   f"real tokens = {num_real_in_eval}, "
-                                   f"padding% = {100*num_padding_in_eval/valid_mask.sum().item():.1f}%")
-
                     loss = F.cross_entropy(
                         shift_logits[valid_mask],
                         shift_labels[valid_mask],

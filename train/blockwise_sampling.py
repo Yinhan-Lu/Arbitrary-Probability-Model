@@ -32,6 +32,7 @@ def generate_conditioning_evaluation_sets_blockwise(
     num_evaluation_distribution: Callable[[int], int] = None,
     num_eval_blocks_distribution: Callable[[int], int] = None,
     eval_block_sizes_distribution: Callable[[int, int], list[int]] = None,
+    valid_positions: list[int] = None,
 ) -> tuple[list[int], list[int], list[int]]:
     """
     Generate conditioning, evaluation, and unknown sets as contiguous blocks.
@@ -51,6 +52,9 @@ def generate_conditioning_evaluation_sets_blockwise(
             (default: uses same logic as conditioning)
         eval_block_sizes_distribution: Function for evaluation block sizes
             (default: uses same logic as conditioning)
+        valid_positions: Optional list of valid positions to sample from (e.g., non-padding).
+                        If provided, all sampling only occurs within these positions.
+                        If None, samples from range(seq_len).
 
     Returns:
         Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
@@ -66,16 +70,22 @@ def generate_conditioning_evaluation_sets_blockwise(
         ...     block_sizes_distribution=uniform_block_sizes_distribution,
         ... )
     """
-    # Step 1: Generate conditioning set
+    # Step 1: Generate conditioning set (with valid_positions if provided)
     conditioning_indices = _generate_blockwise_set(
         seq_len=seq_len,
         num_items_distribution=num_conditioning_distribution,
         num_blocks_distribution=num_blocks_distribution,
         block_sizes_distribution=block_sizes_distribution,
+        valid_positions=valid_positions,
     )
 
-    # Step 2: Calculate unknown set (all non-conditioning positions)
-    unknown_indices = [i for i in range(seq_len) if i not in conditioning_indices]
+    # Step 2: Calculate unknown set (all non-conditioning positions within valid range)
+    if valid_positions is not None:
+        # Unknown = valid positions that are not in conditioning
+        unknown_indices = [i for i in valid_positions if i not in conditioning_indices]
+    else:
+        # Unknown = all positions that are not in conditioning
+        unknown_indices = [i for i in range(seq_len) if i not in conditioning_indices]
 
     # Step 3: Generate evaluation set from unknown positions
     if len(unknown_indices) == 0:
@@ -122,6 +132,7 @@ def _generate_blockwise_set(
     num_items_distribution: Callable[[int], int],
     num_blocks_distribution: Callable[[int], int],
     block_sizes_distribution: Callable[[int, int], list[int]],
+    valid_positions: list[int] = None,
 ) -> list[int]:
     """
     Generate a set of indices as contiguous blocks from sequence positions.
@@ -133,10 +144,24 @@ def _generate_blockwise_set(
         num_items_distribution: Samples number of items to select
         num_blocks_distribution: Samples number of blocks
         block_sizes_distribution: Samples sizes of each block
+        valid_positions: Optional list of valid positions to sample from (e.g., non-padding).
+                        If provided, sampling only occurs within these positions.
+                        If None, samples from range(seq_len).
 
     Returns:
         Sorted list of selected indices
     """
+    # Use valid_positions if provided, otherwise use all positions
+    if valid_positions is not None:
+        # Sample from valid positions using the from_positions variant
+        return _generate_blockwise_set_from_positions(
+            available_positions=valid_positions,
+            num_items_distribution=num_items_distribution,
+            num_blocks_distribution=num_blocks_distribution,
+            block_sizes_distribution=block_sizes_distribution,
+        )
+
+    # Original logic when valid_positions not provided
     # Sample number of items
     num_items = num_items_distribution(seq_len)
     assert 0 <= num_items < seq_len, \
@@ -535,6 +560,7 @@ def generate_boundary_conditioning_split(
     boundary_block_sizes_distribution: Callable[[int], tuple[int, int]] = None,
     start_block_range: tuple[int, int] = None,
     end_block_range: tuple[int, int] = None,
+    valid_positions: list[int] = None,
 ) -> tuple[list[int], list[int], list[int]]:
     """
     Generate boundary-constrained conditioning split for Mode 2 evaluation.
@@ -553,6 +579,9 @@ def generate_boundary_conditioning_split(
         end_block_range: (min_size, max_size) for end block.
                         Default: (1, seq_len // 3)
                         Ignored if boundary_block_sizes_distribution is provided.
+        valid_positions: Optional list of valid positions to sample from (e.g., non-padding).
+                        If provided, boundary blocks are selected from start/end of valid positions.
+                        If None, samples from range(seq_len).
 
     Returns:
         Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
@@ -568,41 +597,52 @@ def generate_boundary_conditioning_split(
         - evaluation: [2, 3, 4, 5, 6, 7]
         - unknown: [2, 3, 4, 5, 6, 7]
     """
-    if seq_len < 3:
-        raise ValueError(f"Sequence too short for boundary split: {seq_len}")
+    # Use valid_positions if provided
+    if valid_positions is not None:
+        positions = sorted(valid_positions)
+        effective_len = len(positions)
+    else:
+        positions = list(range(seq_len))
+        effective_len = seq_len
+
+    if effective_len < 3:
+        raise ValueError(f"Sequence too short for boundary split: {effective_len}")
 
     # Use distribution if provided, otherwise fall back to range-based sampling
     if boundary_block_sizes_distribution is not None:
-        start_size, end_size = boundary_block_sizes_distribution(seq_len)
+        start_size, end_size = boundary_block_sizes_distribution(effective_len)
     else:
         # Default ranges
         if start_block_range is None:
-            max_single_block = max(1, seq_len // 3)
+            max_single_block = max(1, effective_len // 3)
             start_block_range = (1, max_single_block)
 
         if end_block_range is None:
-            max_single_block = max(1, seq_len // 3)
+            max_single_block = max(1, effective_len // 3)
             end_block_range = (1, max_single_block)
 
         # Sample start block size
         min_start, max_start = start_block_range
-        max_start = min(max_start, seq_len - 2)  # Leave room for end block and middle
+        max_start = min(max_start, effective_len - 2)  # Leave room for end block and middle
         start_size = random.randint(min_start, max_start)
 
         # Sample end block size (must leave room for start block and at least 1 middle token)
         min_end, max_end = end_block_range
-        max_end = min(max_end, seq_len - start_size - 1)  # Leave room for start block and middle
+        max_end = min(max_end, effective_len - start_size - 1)  # Leave room for start block and middle
         if max_end < min_end:
             max_end = min_end
         end_size = random.randint(min_end, max_end)
 
-    # Build indices
-    conditioning_indices = list(range(start_size)) + list(range(seq_len - end_size, seq_len))
-    evaluation_indices = list(range(start_size, seq_len - end_size))
+    # Build indices from positions list
+    # Start block: first start_size positions
+    # End block: last end_size positions
+    # Middle: everything in between
+    conditioning_indices = positions[:start_size] + positions[-end_size:]
+    evaluation_indices = positions[start_size:-end_size] if end_size > 0 else positions[start_size:]
     unknown_indices = evaluation_indices.copy()  # In Mode 2, unknown = evaluation
 
     # Validate
-    assert len(conditioning_indices) + len(evaluation_indices) == seq_len
+    assert len(conditioning_indices) + len(evaluation_indices) == effective_len
     assert len(evaluation_indices) > 0, "Evaluation set cannot be empty"
     assert set(conditioning_indices).isdisjoint(set(evaluation_indices))
 
