@@ -196,7 +196,7 @@ class ConditionalTrainer:
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.mask_token_id,
             bos_token_id=self.bos_token_id,
-            max_seq_len=effective_max_length,
+            max_seq_len=self.config.max_seq_len,
             cond_pct_max=self.args.cond_pct_max,
             tokenizer_pad_token_id=self.tokenizer.pad_token_id,
             num_conditioning_distribution=num_cond_dist,
