@@ -192,6 +192,50 @@ def plot_train_vs_eval(df, output_dir):
     print(f"  ✓ Saved: {output_path}")
 
 
+def plot_train_vs_all_eval_losses(df, output_dir):
+    """Plot training loss vs all evaluation modes losses together."""
+    has_train = 'train_loss' in df.columns and not df['train_loss'].isna().all()
+
+    mode_cols = [f'mode{i}_loss' for i in range(1, 6)]
+    available_modes = [col for col in mode_cols if col in df.columns and not df[col].isna().all()]
+
+    if not has_train and not available_modes:
+        print("  ⚠ Skipping train_vs_all_eval_losses plot (no data)")
+        return
+
+    plt.figure(figsize=(14, 7))
+    colors = ['#2E86AB', '#E63946', '#F77F00', '#06D6A0', '#118AB2', '#073B4C']
+
+    # Plot training loss
+    if has_train:
+        train_data = df[['step', 'train_loss']].dropna()
+        if len(train_data) > 0:
+            plt.plot(train_data['step'], train_data['train_loss'],
+                    linewidth=2.5, color=colors[0], marker='o', markersize=3,
+                    alpha=0.8, label='Train Loss', zorder=10)
+
+    # Plot all eval mode losses
+    for i, mode_col in enumerate(available_modes):
+        mode_data = df[['step', mode_col]].dropna()
+        if len(mode_data) > 0:
+            mode_num = mode_col.replace('mode', '').replace('_loss', '')
+            plt.plot(mode_data['step'], mode_data[mode_col],
+                    linewidth=2, color=colors[i+1], marker='s', markersize=4,
+                    alpha=0.7, label=f'Mode {mode_num} (Eval)', zorder=5)
+
+    plt.xlabel('Step', fontsize=13)
+    plt.ylabel('Loss', fontsize=13)
+    plt.title('Training Loss vs All Evaluation Modes', fontsize=15, fontweight='bold')
+    plt.legend(loc='best', fontsize=11, framealpha=0.9)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    output_path = output_dir / 'train_vs_all_eval_losses.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {output_path}")
+
+
 def plot_single_mode(df, mode_num, output_dir):
     """Plot loss and perplexity for a single evaluation mode."""
     loss_col = f'mode{mode_num}_loss'
@@ -324,6 +368,7 @@ def plot_all_metrics(exp_dir, output_dir=None):
     plot_all_modes_loss(df, output_dir)
     plot_all_modes_perplexity(df, output_dir)
     plot_train_vs_eval(df, output_dir)
+    plot_train_vs_all_eval_losses(df, output_dir)
     plot_epoch_comparison(df, output_dir)
 
     # Individual mode plots
