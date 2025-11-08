@@ -60,7 +60,7 @@ OUTPUT_DIR="./experiments"
 MODEL_CONFIG="distilgpt2"
 BATCH_SIZE=8
 GRAD_ACCUM=16
-NUM_SAMPLES=200000
+NUM_SAMPLES=1000000
 EVAL_SAMPLES=10000
 LEARNING_RATE=5e-4
 NUM_EPOCHS=5
@@ -140,11 +140,15 @@ echo "========================================="
 if [ $EXIT_CODE -eq 0 ]; then
     echo "✓ Training completed successfully!"
     echo ""
+
+    # Find the most recent experiment directory
+    LATEST_EXP=$(ls -dt $OUTPUT_DIR/${EXP_NAME}_* 2>/dev/null | head -1)
+
     echo "Results:"
-    echo "  Experiment directory: $OUTPUT_DIR/$EXP_NAME*"
-    echo "  Checkpoints: $OUTPUT_DIR/$EXP_NAME*/checkpoints/"
-    echo "  Logs: $OUTPUT_DIR/$EXP_NAME*/logs/"
-    echo "  CSV Metrics: $OUTPUT_DIR/$EXP_NAME*/logs/metrics.csv"
+    echo "  Experiment directory: $LATEST_EXP"
+    echo "  Checkpoints: $LATEST_EXP/checkpoints/"
+    echo "  Logs: $LATEST_EXP/logs/"
+    echo "  CSV Metrics: $LATEST_EXP/logs/metrics.csv"
     echo ""
     echo "Key improvements in this training (Plan A):"
     echo "  ✓ Moderate conditioning (20-40%, up from 0-10%)"
@@ -156,11 +160,48 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  - Less overfitting (train/eval gap reduced)"
     echo "  - Train loss should stay closer to eval loss"
     echo ""
+
+    # Auto-generate visualization plots
+    if [ -n "$LATEST_EXP" ] && [ -d "$LATEST_EXP" ]; then
+        echo "========================================="
+        echo "AUTO-GENERATING VISUALIZATION PLOTS"
+        echo "========================================="
+
+        # Generate detailed individual plots
+        echo "Generating individual metric plots..."
+        python3 utils/plot_individual_metrics.py "$LATEST_EXP"
+        PLOT_EXIT_CODE=$?
+
+        if [ $PLOT_EXIT_CODE -eq 0 ]; then
+            echo "✓ Individual plots generated successfully!"
+            echo "  Location: $LATEST_EXP/plots_individual/"
+        else
+            echo "⚠ Warning: Failed to generate individual plots (exit code: $PLOT_EXIT_CODE)"
+        fi
+
+        # Generate comprehensive visualization dashboard
+        echo ""
+        echo "Generating comprehensive dashboard..."
+        python3 utils/quickstart_visualization.py "$LATEST_EXP"
+        DASH_EXIT_CODE=$?
+
+        if [ $DASH_EXIT_CODE -eq 0 ]; then
+            echo "✓ Dashboard generated successfully!"
+            echo "  Location: $LATEST_EXP/plots/"
+        else
+            echo "⚠ Warning: Failed to generate dashboard (exit code: $DASH_EXIT_CODE)"
+        fi
+
+        echo "========================================="
+        echo ""
+    fi
+
     echo "To view 5-mode evaluation results:"
-    echo "  cat $OUTPUT_DIR/$EXP_NAME*/logs/metrics.csv | column -t -s,"
+    echo "  cat $LATEST_EXP/logs/metrics.csv | column -t -s,"
     echo ""
-    echo "To visualize training curves:"
-    echo "  python3 utils/quickstart_visualization.py $OUTPUT_DIR/$EXP_NAME*"
+    echo "Plots generated:"
+    echo "  Individual plots: $LATEST_EXP/plots_individual/"
+    echo "  Dashboard: $LATEST_EXP/plots/"
     echo ""
     echo "To compare with previous training:"
     echo "  python3 utils/quickstart_visualization.py experiments/conditional_minimal_cond_* experiments/conditional_moderate_cond_* --compare"
