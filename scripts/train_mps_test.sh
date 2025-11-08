@@ -28,8 +28,8 @@ python3 train_conditional.py \
     --num_epochs 1 \
     --batch_size 8 \
     --gradient_accumulation_steps 4 \
-    --num_train_samples 10000 \
-    --num_eval_samples 1000 \
+    --num_train_samples 50000 \
+    --num_eval_samples 5000 \
     --num_workers 0 \
     --learning_rate 5e-4 \
     --warmup_steps 200 \
@@ -39,11 +39,11 @@ python3 train_conditional.py \
     --eval_pct_max 0.4 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --logging_steps 50 \
-    --save_steps 500 \
+    --logging_steps 5 \
+    --save_steps 100 \
     --do_eval \
-    --eval_steps 500 \
-    --max_eval_batches 50 \
+    --eval_steps 20 \
+    --max_eval_batches 20 \
     --output_dir ./experiments \
     --exp_name mps_pipeline_test \
     --device mps
