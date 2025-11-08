@@ -83,9 +83,11 @@ def load_dataset_with_retry(dataset_name, dataset_config, split, max_retries=3, 
 
 class WikipediaDataset(Dataset):
     """
-    Wikipedia dataset for language modeling
+    Wikipedia dataset for language modeling with concatenate + chunk approach
 
-    Processes Wikipedia articles into tokenized sequences for GPT-2 training
+    Concatenates all documents with EOS separators, then chunks into fixed-length
+    sequences. This eliminates placeholder text and maximizes data utilization.
+    Follows mainstream practice (HuggingFace, GPT-2, etc.)
     """
 
     def __init__(
@@ -102,10 +104,10 @@ class WikipediaDataset(Dataset):
         """
         Args:
             tokenizer: GPT-2 tokenizer instance
-            max_length: Maximum sequence length
+            max_length: Maximum sequence length (chunk size)
             split: Dataset split ("train" or "validation")
-            streaming: Whether to use streaming mode (for large datasets)
-            num_samples: Number of samples to use (None for all)
+            streaming: Whether to use streaming mode (not supported with chunking)
+            num_samples: Number of documents to process (None for all)
             dataset_name: Hugging Face dataset name
             dataset_config: Dataset configuration/version
             primary_dataset_only: If True, only use specified dataset without fallback
@@ -124,7 +126,7 @@ class WikipediaDataset(Dataset):
             split=split,
             max_retries=3,
             retry_delay=5,
-            streaming=streaming
+            streaming=False  # Force non-streaming for chunking preprocessing
         )
 
         # If primary dataset failed, try fallback options (only if allowed)
@@ -139,7 +141,7 @@ class WikipediaDataset(Dataset):
                 split=split,
                 max_retries=2,
                 retry_delay=3,
-                streaming=streaming
+                streaming=False
             )
 
         # Fallback 2: Try WikiText-2 (smallest, most reliable)
@@ -151,7 +153,7 @@ class WikipediaDataset(Dataset):
                 split=split,
                 max_retries=2,
                 retry_delay=3,
-                streaming=streaming
+                streaming=False
             )
 
         # If all attempts failed, raise error
@@ -164,76 +166,126 @@ class WikipediaDataset(Dataset):
                 "Consider using cached datasets or downloading datasets manually."
             )
 
-        # Process loaded dataset
-        if streaming:
-            if num_samples:
-                self.dataset = self.dataset.take(num_samples)
-                self.num_samples = num_samples
-            else:
-                self.num_samples = None  # Unknown for streaming
-        else:
-            if num_samples:
-                self.dataset = self.dataset.select(range(min(num_samples, len(self.dataset))))
-            self.num_samples = len(self.dataset)
+        # Limit dataset size if requested
+        if num_samples:
+            total_docs = len(self.dataset)
+            self.dataset = self.dataset.select(range(min(num_samples, total_docs)))
+            logger.info(f"Using {len(self.dataset)} documents out of {total_docs}")
 
-        logger.info(f"Dataset loaded successfully. Samples: {self.num_samples if self.num_samples else 'streaming'}")
+        logger.info(f"Dataset loaded successfully. Documents: {len(self.dataset)}")
+
+        # Preprocess: concatenate + chunk
+        logger.info("Preprocessing: concatenating documents and chunking...")
+        self.chunks = self._create_chunks()
+        self.num_samples = len(self.chunks)
+
+        logger.info(f"Created {self.num_samples} chunks of length {self.max_length}")
+
+    def _create_chunks(self):
+        """
+        Concatenate all documents with EOS separators and chunk into fixed-length sequences
+
+        Process:
+        1. Iterate through all documents
+        2. Tokenize each document
+        3. Concatenate with EOS token separator
+        4. Chunk concatenated sequence into max_length pieces
+        5. Return list of chunks (only complete chunks)
+
+        Returns:
+            List of token ID lists, each of length self.max_length
+        """
+        all_tokens = []
+        eos_token_id = self.tokenizer.eos_token_id
+
+        total_docs = len(self.dataset)
+        logger.info(f"Processing {total_docs} documents...")
+
+        # Process all documents
+        for idx in range(total_docs):
+            item = self.dataset[idx]
+
+            # Extract text (field name depends on dataset)
+            if "text" in item:
+                text = item["text"]
+            elif "title" in item and "content" in item:
+                text = item["title"] + "\n\n" + item["content"]
+            else:
+                text = str(item)
+
+            # Skip completely empty strings (they produce 0 tokens anyway)
+            # Don't filter short texts - they have information (headers, etc.)
+            if not text:
+                continue
+
+            # Tokenize without truncation
+            tokens = self.tokenizer.encode(text, add_special_tokens=False)
+
+            # Skip if tokenization produced nothing
+            if not tokens:
+                continue
+
+            # Add tokens + EOS separator
+            all_tokens.extend(tokens)
+            all_tokens.append(eos_token_id)
+
+            # Progress logging every 10k documents
+            if (idx + 1) % 10000 == 0:
+                logger.info(f"  Processed {idx + 1}/{total_docs} documents, "
+                          f"accumulated {len(all_tokens):,} tokens")
+
+        logger.info(f"Total tokens accumulated: {len(all_tokens):,}")
+
+        # Chunk into fixed-length sequences
+        chunks = []
+        num_complete_chunks = len(all_tokens) // self.max_length
+
+        for i in range(num_complete_chunks):
+            start_idx = i * self.max_length
+            end_idx = start_idx + self.max_length
+            chunk = all_tokens[start_idx:end_idx]
+            chunks.append(chunk)
+
+        # Report statistics
+        num_dropped_tokens = len(all_tokens) % self.max_length
+        dropped_pct = (num_dropped_tokens / len(all_tokens)) * 100 if all_tokens else 0
+        logger.info(f"Created {len(chunks)} complete chunks")
+        logger.info(f"Dropped {num_dropped_tokens} tokens ({dropped_pct:.2f}%) from incomplete last chunk")
+
+        return chunks
 
     def __len__(self):
-        if self.streaming or self.num_samples is None:
-            # For streaming datasets, return a large number
-            return 1_000_000
         return self.num_samples
 
     def __getitem__(self, idx):
         """
-        Get a single tokenized sample
+        Get a pre-chunked sequence
 
         Returns:
             Dict with 'input_ids' and 'attention_mask'
+            - All tokens are valid (no padding in chunks)
+            - attention_mask is all 1s
         """
-        # Get text from dataset
-        if self.streaming:
-            # For streaming, we can't index directly
-            # This is handled differently in the DataLoader
-            item = next(iter(self.dataset.skip(idx).take(1)))
-        else:
-            item = self.dataset[idx]
+        chunk = self.chunks[idx]
 
-        # Extract text (field name depends on dataset)
-        if "text" in item:
-            text = item["text"]
-        elif "title" in item and "content" in item:
-            # Wikipedia format: combine title and content
-            text = item["title"] + "\n\n" + item["content"]
-        else:
-            text = str(item)
+        # Convert to tensor
+        input_ids = torch.tensor(chunk, dtype=torch.long)
 
-        # Skip empty or very short texts (WikiText has many empty lines)
-        if not text or len(text.strip()) < 10:
-            # Return a minimal valid sample instead of skipping
-            # (we need to return something for indexing to work)
-            text = "This is a placeholder text."
+        # All positions are valid (no padding in chunks)
+        attention_mask = torch.ones_like(input_ids)
 
-        # Tokenize (no padding - will be done dynamically in collate_fn)
-        encoding = self.tokenizer(
-            text,
-            max_length=self.max_length,
-            truncation=True,
-            padding=False,
-            return_tensors="pt"
-        )
-
-        # Clone tensors to make them resizable for DataLoader collation
         return {
-            "input_ids": encoding["input_ids"].squeeze(0).clone(),
-            "attention_mask": encoding["attention_mask"].squeeze(0).clone()
+            "input_ids": input_ids,
+            "attention_mask": attention_mask
         }
 
 
 class StreamingWikipediaDataset:
     """
-    Streaming version of Wikipedia dataset for memory efficiency
-    Better for large-scale training
+    Streaming version of Wikipedia dataset with on-the-fly chunking
+
+    Uses buffer to concatenate documents with EOS separators, then yields
+    fixed-length chunks. Memory-efficient for large-scale training.
     """
 
     def __init__(
@@ -249,8 +301,10 @@ class StreamingWikipediaDataset:
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.buffer_size = buffer_size
+        self.eos_token_id = tokenizer.eos_token_id
 
         logger.info(f"Loading streaming Wikipedia dataset: {dataset_name}")
+        logger.info(f"Chunk size: {max_length}, Buffer size: {buffer_size}")
 
         # Try primary dataset with retry
         self.dataset = load_dataset_with_retry(
@@ -294,7 +348,14 @@ class StreamingWikipediaDataset:
             )
 
     def __iter__(self):
-        """Iterate over the dataset"""
+        """
+        Iterate over the dataset, yielding fixed-length chunks
+
+        Uses a buffer to concatenate documents, then yields chunks on-the-fly.
+        """
+        buffer = []
+        chunks_yielded = 0
+
         for item in self.dataset:
             # Extract text
             if "text" in item:
@@ -304,26 +365,38 @@ class StreamingWikipediaDataset:
             else:
                 text = str(item)
 
-            # Skip empty or very short texts (WikiText has many empty lines)
-            if not text or len(text.strip()) < 10:
-                # Return a minimal valid sample instead of skipping
-                # (we need to return something for indexing to work)
-                text = "This is a placeholder text."
+            # Skip completely empty strings (produce 0 tokens anyway)
+            if not text:
+                continue
 
-            # Tokenize (no padding - will be done dynamically in collate_fn)
-            encoding = self.tokenizer(
-                text,
-                max_length=self.max_length,
-                truncation=True,
-                padding=False,
-                return_tensors="pt"
-            )
+            # Tokenize without truncation
+            tokens = self.tokenizer.encode(text, add_special_tokens=False)
 
-            # Clone tensors to make them resizable for DataLoader collation
-            yield {
-                "input_ids": encoding["input_ids"].squeeze(0).clone(),
-                "attention_mask": encoding["attention_mask"].squeeze(0).clone()
-            }
+            # Skip if tokenization produced nothing
+            if not tokens:
+                continue
+
+            # Add tokens + EOS separator to buffer
+            buffer.extend(tokens)
+            buffer.append(self.eos_token_id)
+
+            # Yield complete chunks from buffer
+            while len(buffer) >= self.max_length:
+                chunk = buffer[:self.max_length]
+                buffer = buffer[self.max_length:]
+
+                # Convert to tensor
+                input_ids = torch.tensor(chunk, dtype=torch.long)
+                attention_mask = torch.ones_like(input_ids)
+
+                chunks_yielded += 1
+                if chunks_yielded % 1000 == 0:
+                    logger.debug(f"Yielded {chunks_yielded} chunks, buffer size: {len(buffer)}")
+
+                yield {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask
+                }
 
 
 def create_simple_collate_fn(pad_token_id=50256):
