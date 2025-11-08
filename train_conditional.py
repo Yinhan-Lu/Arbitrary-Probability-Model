@@ -59,7 +59,17 @@ class ConditionalTrainer:
 
     def __init__(self, args):
         self.args = args
-        self.device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+
+        # Smart device selection with MPS (M-chip) support
+        if args.device == "auto":
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+            elif torch.backends.mps.is_available():
+                self.device = torch.device("mps")
+            else:
+                self.device = torch.device("cpu")
+        else:
+            self.device = torch.device(args.device)
 
         # Create experiment directory
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -656,7 +666,9 @@ def parse_args():
     parser.add_argument("--exp_name", type=str, default="conditional_gpt2")
 
     # Device
-    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--device", type=str, default="auto",
+                        choices=["cuda", "mps", "cpu", "auto"],
+                        help="Device to use for training (auto: automatically select best available device)")
 
     return parser.parse_args()
 
