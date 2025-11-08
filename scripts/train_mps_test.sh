@@ -37,8 +37,6 @@ python3 train_conditional.py \
     --cond_pct_max 0.4 \
     --eval_pct_min 0.2 \
     --eval_pct_max 0.4 \
-    --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
     --logging_steps 50 \
