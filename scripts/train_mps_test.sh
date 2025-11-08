@@ -30,7 +30,7 @@ python3 train_conditional.py \
     --gradient_accumulation_steps 4 \
     --num_train_samples 10000 \
     --num_eval_samples 1000 \
-    --num_workers 2 \
+    --num_workers 0 \
     --learning_rate 5e-4 \
     --warmup_steps 200 \
     --cond_pct_min 0.2 \
