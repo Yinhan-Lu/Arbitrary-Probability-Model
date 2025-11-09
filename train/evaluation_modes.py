@@ -93,7 +93,8 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
             num_batches += 1
 
             # Store for Mode 4/5 (move to CPU and free GPU memory immediately)
-            all_logits.append(logits.cpu())
+            # Convert to float16 to save memory (31GB → 15.5GB)
+            all_logits.append(logits.cpu().half())
             all_labels.append(input_ids.cpu())
             del logits, input_ids  # Free GPU memory
             torch.cuda.empty_cache()  # Clear cache
@@ -404,7 +405,7 @@ def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
 
             if valid_mask.sum() > 0:
                 loss = F.cross_entropy(
-                    shift_logits[valid_mask],
+                    shift_logits[valid_mask].float(),  # Convert float16 back to float32 for computation
                     shift_labels[valid_mask],
                     reduction='sum'
                 )
@@ -466,7 +467,7 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
 
             if valid_mask.sum() > 0:
                 loss = F.cross_entropy(
-                    shift_logits[valid_mask],
+                    shift_logits[valid_mask].float(),  # Convert float16 back to float32 for computation
                     shift_labels[valid_mask],
                     reduction='sum'
                 )
