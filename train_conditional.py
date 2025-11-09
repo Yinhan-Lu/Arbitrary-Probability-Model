@@ -407,6 +407,9 @@ class ConditionalTrainer:
                             logger.info(f"New best model saved! Val Loss (Mode 3): {self.best_val_loss:.4f}")
                             self._save_checkpoint("best_model")
 
+                        # Restore training mode after evaluation
+                        self.model.train()
+
                     # Save checkpoint
                     if self.global_step % self.args.save_steps == 0:
                         self._save_checkpoint(f"checkpoint_step_{self.global_step}")
