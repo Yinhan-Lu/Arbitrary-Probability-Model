@@ -183,8 +183,18 @@ class GPT2Model(nn.Module):
         self.mask_token_id = mask_token_id
         self.bos_token_id = bos_token_id
 
-        # Token + Position embeddings
-        self.wte = nn.Embedding(config.vocab_size, config.n_embd)  # token embeddings
+        # Auto-expand vocab_size if special tokens exceed current size
+        effective_vocab_size = config.vocab_size
+        if mask_token_id is not None and mask_token_id >= effective_vocab_size:
+            effective_vocab_size = mask_token_id + 1
+        if bos_token_id is not None and bos_token_id >= effective_vocab_size:
+            effective_vocab_size = bos_token_id + 1
+
+        # Store effective vocab size for later use
+        self.effective_vocab_size = effective_vocab_size
+
+        # Token + Position embeddings (use effective vocab_size)
+        self.wte = nn.Embedding(effective_vocab_size, config.n_embd)  # token embeddings
         self.wpe = nn.Embedding(config.max_seq_len, config.n_embd)  # position embeddings
         self.drop = nn.Dropout(config.dropout)
 
@@ -197,7 +207,8 @@ class GPT2Model(nn.Module):
         self.ln_f = nn.LayerNorm(config.n_embd, eps=config.layer_norm_eps)
 
         # Language model head (tied with token embeddings in original GPT-2)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        # Use effective_vocab_size to match wte
+        self.lm_head = nn.Linear(config.n_embd, effective_vocab_size, bias=False)
 
         # Weight initialization
         self.apply(self._init_weights)
