@@ -20,7 +20,8 @@ echo "✓ Conda environment activated: $CONDA_DEFAULT_ENV"
 echo "✓ Python path: $(which python3)"
 echo ""
 
-python3 train_conditional.py \
+python3 train.py \
+    --model_type conditional \
     --model_config small \
     --num_epochs 3 \
     --batch_size 16 \
@@ -34,14 +35,14 @@ python3 train_conditional.py \
     --weight_decay 0.01 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --max_cond_blocks 2 \
-    --max_eval_blocks 2 \
     --cond_pct_min 0.2 \
     --cond_pct_max 0.4 \
     --eval_pct_min 0.2 \
     --eval_pct_max 0.4 \
     --logging_steps 50 \
     --save_steps 500 \
+    --do_eval \
+    --eval_steps 1000 \
     --output_dir ./experiments \
     --exp_name small_prefix_10min \
     --device cuda

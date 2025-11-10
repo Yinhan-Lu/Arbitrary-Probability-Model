@@ -42,7 +42,8 @@ echo ""
 echo "=========================================="
 echo ""
 
-python3 train_conditional.py \
+python train.py \
+    --model_type conditional \
     --model_config small \
     --num_epochs 1 \
     --batch_size 8 \
