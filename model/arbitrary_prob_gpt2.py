@@ -193,6 +193,9 @@ class GPT2Model(nn.Module):
         # Store effective vocab size for later use
         self.effective_vocab_size = effective_vocab_size
 
+        # Update config to match actual vocab size (important for token_manager compatibility)
+        self.config.vocab_size = effective_vocab_size
+
         # Token + Position embeddings (use effective vocab_size)
         self.wte = nn.Embedding(effective_vocab_size, config.n_embd)  # token embeddings
         self.wpe = nn.Embedding(config.max_seq_len, config.n_embd)  # position embeddings

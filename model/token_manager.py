@@ -109,7 +109,8 @@ class TokenManager:
         Returns:
             Updated model with resized embeddings
         """
-        old_vocab_size = model.config.vocab_size
+        # Read actual embedding size instead of config (more robust for auto-expanded models)
+        old_vocab_size = model.wte.weight.size(0)
         new_vocab_size = len(self.tokenizer)
 
         if old_vocab_size == new_vocab_size:
