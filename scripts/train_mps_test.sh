@@ -3,6 +3,10 @@
 # Testing new concatenate + chunk data pipeline on MacBook M-chip
 # Expected time: ~10-15 minutes
 
+# Activate conda environment
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate arbprob
+
 echo "=========================================="
 echo "M-chip (MPS) Training Quick Test"
 echo "=========================================="

@@ -5,6 +5,10 @@
 
 set -e  # Exit on error
 
+# Activate conda environment
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate arbprob
+
 echo "======================================================================"
 echo "GPT-2 Implementation Sanity Check"
 echo "======================================================================"

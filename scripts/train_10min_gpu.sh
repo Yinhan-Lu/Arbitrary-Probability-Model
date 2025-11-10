@@ -3,6 +3,10 @@
 # Model: small (~38.6M params)
 # Expected time: ~10 minutes on GPU
 
+# Activate conda environment
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate arbprob
+
 python3 train_conditional.py \
     --model_config small \
     --num_epochs 3 \
