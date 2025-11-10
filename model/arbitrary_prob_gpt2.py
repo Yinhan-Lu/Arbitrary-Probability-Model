@@ -175,9 +175,13 @@ class GPT2Model(nn.Module):
     Architecture: Embedding → N × TransformerBlock → LayerNorm → LM Head
     """
 
-    def __init__(self, config):
+    def __init__(self, config, mask_token_id=None, bos_token_id=None):
         super().__init__()
         self.config = config
+
+        # For conditional probability modeling
+        self.mask_token_id = mask_token_id
+        self.bos_token_id = bos_token_id
 
         # Token + Position embeddings
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)  # token embeddings
@@ -219,19 +223,304 @@ class GPT2Model(nn.Module):
         """Return the number of parameters in the model"""
         return sum(p.numel() for p in self.parameters())
 
-    def forward(self, input_ids, attention_mask=None, labels=None, position_ids=None):
+    def _build_augmented_sequence_single(
+        self,
+        input_ids,       # (L,) single sequence
+        cond_idx,        # List[int]
+        eval_idx,        # List[int]
+        unseen_idx,      # List[int]
+        device='cpu'
+    ):
         """
+        Build augmented sequence for a single sample using prefix conditioning
+
         Args:
-            input_ids: Input token indices of shape (batch_size, seq_len)
-            attention_mask: Optional attention mask of shape (batch_size, seq_len, seq_len)
-            labels: Optional labels for language modeling loss of shape (batch_size, seq_len)
-            position_ids: Optional custom position indices of shape (batch_size, seq_len) or (seq_len,)
-                         If None, uses sequential positions 0, 1, 2, ..., seq_len-1
+            input_ids: (L,) original sequence
+            cond_idx: List of conditioning position indices
+            eval_idx: List of evaluation position indices
+            unseen_idx: List of unseen position indices (includes eval_idx)
+            device: Device to create tensors on
+
+        Returns:
+            aug_input_ids: (aug_len,) augmented sequence [cond_tokens] + [BOS + body]
+            position_ids: (aug_len,) custom position encodings
+            N_cond: Number of conditioning tokens
+            N_seq: Number of sequence tokens (BOS + body)
+        """
+        seq_len = input_ids.size(0)
+
+        # 1. Build conditioning prefix
+        cond_tokens = [input_ids[idx].item() for idx in sorted(cond_idx)]
+        cond_position_ids = [idx + 1 for idx in sorted(cond_idx)]  # Body uses 1-seq_len
+        N_cond = len(cond_tokens)
+
+        # 2. Build sequence (BOS + body tokens)
+        seq_tokens = [self.bos_token_id]
+        seq_position_ids = [0]  # BOS uses position 0
+
+        # Only mask truly unseen tokens (unseen - eval)
+        # Keep eval tokens visible so model can use previous eval tokens
+        truly_unseen = set(unseen_idx) - set(eval_idx)
+
+        for i in range(seq_len):
+            if i in truly_unseen:
+                seq_tokens.append(self.mask_token_id)
+            else:
+                seq_tokens.append(input_ids[i].item())
+            seq_position_ids.append(i + 1)  # Body uses positions 1 to seq_len
+
+        N_seq = len(seq_tokens)
+
+        # 3. Concatenate [Cond] + [Seq]
+        aug_input_ids = torch.tensor(
+            cond_tokens + seq_tokens,
+            dtype=torch.long,
+            device=device
+        )
+        position_ids = torch.tensor(
+            cond_position_ids + seq_position_ids,
+            dtype=torch.long,
+            device=device
+        )
+
+        return aug_input_ids, position_ids, N_cond, N_seq
+
+    def _create_prefix_conditional_mask(self, N_cond, N_seq, device='cpu'):
+        """
+        Create prefix conditional attention mask
+
+        Structure:
+        - Conditioning rows: Can attend to all positions (fully visible)
+        - Sequence rows: Can attend to all conditioning + causal sequence
+
+        Args:
+            N_cond: Number of conditioning tokens
+            N_seq: Number of sequence tokens (BOS + body)
+            device: Device to create mask on
+
+        Returns:
+            mask: (N_cond + N_seq, N_cond + N_seq)
+                  1 = can attend, 0 = cannot attend
+        """
+        # Conditioning rows: Fully visible (can attend to all)
+        cond_rows = torch.ones(N_cond, N_cond + N_seq, device=device, dtype=torch.uint8)
+
+        # Sequence rows: Conditioning visible + causal sequence
+        cond_visible = torch.ones(N_seq, N_cond, device=device, dtype=torch.uint8)
+        causal_mask = torch.tril(torch.ones(N_seq, N_seq, device=device, dtype=torch.uint8))
+        seq_rows = torch.cat([cond_visible, causal_mask], dim=1)
+
+        # Concatenate to form full mask
+        full_mask = torch.cat([cond_rows, seq_rows], dim=0)
+
+        return full_mask
+
+    def _create_labels(
+        self,
+        input_ids,       # (L,) original sequence
+        eval_idx,        # List[int]
+        aug_input_ids,   # (aug_len,) augmented sequence
+        N_cond           # int
+    ):
+        """
+        Create labels for loss computation (only evaluation positions)
+
+        Args:
+            input_ids: (L,) original sequence
+            eval_idx: List of evaluation position indices
+            aug_input_ids: (aug_len,) augmented sequence
+            N_cond: Number of conditioning tokens in prefix
+
+        Returns:
+            labels: (aug_len,) with -100 for non-eval positions
+        """
+        labels = torch.full_like(aug_input_ids, -100)
+
+        # Set labels at evaluation positions
+        for eval_pos in eval_idx:
+            # eval_pos is original sequence index (0-based)
+            # In augmented sequence: N_cond (prefix) + 1 (BOS) + eval_pos (body)
+            new_pos = N_cond + 1 + eval_pos
+            if new_pos < len(labels):
+                labels[new_pos] = input_ids[eval_pos].item()
+
+        return labels
+
+    def _augment_batch(
+        self,
+        input_ids,        # (B, L)
+        conditional_idx,  # List[List[int]]
+        evaluation_idx,   # List[List[int]]
+        unseen_idx,       # List[List[int]]
+        pad_token_id=50256,  # Tokenizer's pad token ID
+        device='cpu'
+    ):
+        """
+        Augment entire batch with dynamic padding
+
+        Args:
+            input_ids: (B, L) batch of original sequences
+            conditional_idx: List of conditioning index lists for each sample
+            evaluation_idx: List of evaluation index lists for each sample
+            unseen_idx: List of unseen index lists for each sample
+            pad_token_id: Token ID for padding (default: 50256 for GPT-2)
+            device: Device to create tensors on
+
+        Returns:
+            aug_input_ids: (B, max_aug_len) augmented and padded batch
+            position_ids: (B, max_aug_len) position encodings
+            attention_mask: (B, 1, max_aug_len, max_aug_len) 2D attention masks
+            labels: (B, max_aug_len) labels for loss computation
+        """
+        batch_size = input_ids.size(0)
+
+        # Step 1: Build augmented sequence for each sample
+        aug_samples = []
+        for i in range(batch_size):
+            aug_ids, pos_ids, N_cond, N_seq = self._build_augmented_sequence_single(
+                input_ids[i],
+                conditional_idx[i],
+                evaluation_idx[i],
+                unseen_idx[i],
+                device=device
+            )
+
+            # Create attention mask
+            attn_mask = self._create_prefix_conditional_mask(N_cond, N_seq, device=device)
+
+            # Create labels
+            labels = self._create_labels(
+                input_ids[i],
+                evaluation_idx[i],
+                aug_ids,
+                N_cond
+            )
+
+            aug_samples.append({
+                'input_ids': aug_ids,
+                'position_ids': pos_ids,
+                'attention_mask': attn_mask,
+                'labels': labels
+            })
+
+        # Step 2: Find max length in batch
+        max_len = max(s['input_ids'].size(0) for s in aug_samples)
+
+        # Step 3: Pad to max_len
+        padded_input_ids = []
+        padded_position_ids = []
+        padded_attention_masks = []
+        padded_labels = []
+
+        for sample in aug_samples:
+            current_len = sample['input_ids'].size(0)
+            pad_len = max_len - current_len
+
+            if pad_len > 0:
+                # Pad input_ids
+                padded_ids = torch.cat([
+                    sample['input_ids'],
+                    torch.full((pad_len,), pad_token_id, dtype=torch.long, device=device)
+                ])
+
+                # Pad position_ids
+                padded_pos = torch.cat([
+                    sample['position_ids'],
+                    torch.zeros(pad_len, dtype=torch.long, device=device)
+                ])
+
+                # Pad labels
+                padded_lab = torch.cat([
+                    sample['labels'],
+                    torch.full((pad_len,), -100, dtype=torch.long, device=device)
+                ])
+
+                # Pad attention mask (2D)
+                padded_mask = torch.zeros(max_len, max_len, dtype=torch.uint8, device=device)
+                padded_mask[:current_len, :current_len] = sample['attention_mask']
+                # Let padded positions attend to valid content (avoid softmax NaN)
+                padded_mask[current_len:, :current_len] = 1
+
+            else:
+                padded_ids = sample['input_ids']
+                padded_pos = sample['position_ids']
+                padded_lab = sample['labels']
+                padded_mask = sample['attention_mask']
+
+            padded_input_ids.append(padded_ids)
+            padded_position_ids.append(padded_pos)
+            padded_attention_masks.append(padded_mask)
+            padded_labels.append(padded_lab)
+
+        # Step 4: Stack into batch
+        batch_input_ids = torch.stack(padded_input_ids, dim=0)
+        batch_position_ids = torch.stack(padded_position_ids, dim=0)
+        batch_labels = torch.stack(padded_labels, dim=0)
+        batch_attention_mask = torch.stack(padded_attention_masks, dim=0).unsqueeze(1)  # (B, 1, L, L)
+
+        return batch_input_ids, batch_position_ids, batch_attention_mask, batch_labels
+
+    def forward(
+        self,
+        input_ids,
+        conditional_idx=None,
+        evaluation_idx=None,
+        unseen_idx=None,
+        attention_mask=None,
+        labels=None,
+        position_ids=None
+    ):
+        """
+        Forward pass with support for two modes:
+        1. Conditional mode: Provide conditional_idx, evaluation_idx, unseen_idx
+           - Model internally constructs augmented sequences
+           - Creates prefix conditional attention masks
+           - Builds custom position IDs and labels
+        2. Standard mode: Do not provide indices
+           - Standard causal LM forward pass
+           - Uses provided attention_mask or default causal mask
+
+        Args:
+            input_ids: (B, L) input token indices
+            conditional_idx: List[List[int]] or None - conditioning positions for each sample
+            evaluation_idx: List[List[int]] or None - evaluation positions for each sample
+            unseen_idx: List[List[int]] or None - unseen positions for each sample
+            attention_mask: Optional attention mask (standard mode only)
+            labels: Optional labels (standard mode only, conditional mode auto-generates)
+            position_ids: Optional position IDs (standard mode only, conditional mode auto-generates)
 
         Returns:
             logits: Output logits of shape (batch_size, seq_len, vocab_size)
             loss: Optional language modeling loss if labels are provided
         """
+        # Determine which mode to use
+        if conditional_idx is not None:
+            # === CONDITIONAL MODE ===
+            assert evaluation_idx is not None, "Must provide evaluation_idx in conditional mode"
+            assert unseen_idx is not None, "Must provide unseen_idx in conditional mode"
+            assert self.mask_token_id is not None, "mask_token_id required for conditional mode"
+            assert self.bos_token_id is not None, "bos_token_id required for conditional mode"
+
+            # Internal augmentation
+            aug_input_ids, aug_position_ids, aug_attention_mask, aug_labels = self._augment_batch(
+                input_ids=input_ids,
+                conditional_idx=conditional_idx,
+                evaluation_idx=evaluation_idx,
+                unseen_idx=unseen_idx,
+                pad_token_id=50256,  # TODO: Should get from config or parameter
+                device=input_ids.device
+            )
+
+            # Use augmented inputs
+            input_ids = aug_input_ids
+            position_ids = aug_position_ids
+            attention_mask = aug_attention_mask
+            labels = aug_labels  # Auto-generated labels
+
+        else:
+            # === STANDARD MODE ===
+            # Use original inputs, no augmentation
+            pass
         B, T = input_ids.size()
 
         # Get token and position embeddings

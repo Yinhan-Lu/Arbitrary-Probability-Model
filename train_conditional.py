@@ -125,8 +125,12 @@ class ConditionalTrainer:
 
         logger.info(f"Special tokens: Mask={self.mask_token_id}, BOS={self.bos_token_id}")
 
-        # Create model
-        self.model = GPT2Model(self.config).to(self.device)
+        # Create model with special tokens for conditional probability modeling
+        self.model = GPT2Model(
+            self.config,
+            mask_token_id=self.mask_token_id,
+            bos_token_id=self.bos_token_id
+        ).to(self.device)
 
         # Load pretrained weights if specified
         if self.args.pretrained_model_path:
@@ -203,12 +207,11 @@ class ConditionalTrainer:
             evaluation_sampling=self.args.evaluation_sampling,
         )
 
-        # Create collate function that does augmentation + dynamic padding
-        # This is OPTIMAL: augment first, then single dynamic padding to max in batch
-        logger.info("Creating augment collate function for dynamic padding optimization")
-        train_collate_fn = create_augment_collate_fn(self.augmenter, device='cpu')
+        # Use simple collate function (no augmentation)
+        # Augmentation now happens inside model forward pass
+        logger.info("Using simple collate function (augmentation in model)")
+        train_collate_fn = create_simple_collate_fn(pad_token_id=self.tokenizer.pad_token_id)
 
-        # Note: Using augment collate function for optimal single-pass dynamic padding
         self.train_loader = get_dataloader(
             config=dataset_config,
             split="train",
@@ -216,7 +219,7 @@ class ConditionalTrainer:
             num_workers=self.args.num_workers,
             streaming=False,
             num_samples=self.args.num_train_samples,
-            collate_fn=train_collate_fn
+            collate_fn=train_collate_fn  # Changed: no augmentation in collate
         )
 
         if self.args.do_eval:
@@ -272,20 +275,41 @@ class ConditionalTrainer:
     def train_step(self, batch):
         """Single training step with conditional augmentation
 
-        Note: Augmentation is now done in collate_fn for optimal single-pass dynamic padding
+        Note: Augmentation now happens inside model forward pass
         """
-        # Move augmented batch to device (augmentation already done in collate_fn)
-        input_ids = batch["input_ids"].to(self.device)
-        attention_mask = batch["attention_mask"].to(self.device)
-        labels = batch["labels"].to(self.device)
-        position_ids = batch["position_ids"].to(self.device)
+        # Get original input_ids from batch
+        input_ids = batch["input_ids"].to(self.device)  # (B, L)
+        batch_size, seq_len = input_ids.size()
 
-        # Forward pass with augmented inputs
+        # Sample indices for each sample in batch
+        batch_cond_idx = []
+        batch_eval_idx = []
+        batch_unseen_idx = []
+
+        for i in range(batch_size):
+            # Find valid positions (non-padding) for this sample
+            sample_ids = input_ids[i]
+            valid_positions = [
+                j for j in range(seq_len)
+                if sample_ids[j] != self.tokenizer.pad_token_id
+            ]
+
+            # Use augmenter to sample indices
+            cond_idx, eval_idx, unseen_idx = self.augmenter.split_indices(
+                seq_len=seq_len,
+                valid_positions=valid_positions
+            )
+
+            batch_cond_idx.append(cond_idx)
+            batch_eval_idx.append(eval_idx)
+            batch_unseen_idx.append(unseen_idx)
+
+        # Forward pass - model does augmentation internally
         logits, loss = self.model(
             input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-            position_ids=position_ids
+            conditional_idx=batch_cond_idx,
+            evaluation_idx=batch_eval_idx,
+            unseen_idx=batch_unseen_idx
         )
 
         # Scale loss for gradient accumulation

@@ -160,13 +160,14 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
             attention_mask_1d = batch['attention_mask'].to(device)
             batch_size, seq_len = input_ids.shape
 
-            batch_loss = 0.0
-            batch_tokens = 0
             batch_eval_indices = []
 
-            # Process each sample in batch
+            # Sample indices for each sample in batch
+            batch_cond_idx = []
+            batch_eval_idx = []
+            batch_unseen_idx = []
+
             for i in range(batch_size):
-                sample_ids = input_ids[i]
                 sample_attention_mask = attention_mask_1d[i]
 
                 # Get valid (non-padding) positions
@@ -178,75 +179,25 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                     boundary_block_sizes_distribution=boundary_distribution,
                     valid_positions=valid_positions
                 )
+
+                batch_cond_idx.append(cond_idx)
+                batch_eval_idx.append(eval_idx)
+                batch_unseen_idx.append(unknown_idx)
                 batch_eval_indices.append(eval_idx)
 
-                # Augment sequence (manually, similar to augmenter.augment_sequence)
-                # Build prefix (conditioning tokens)
-                cond_tokens = [sample_ids[idx].item() for idx in sorted(cond_idx)]
-                cond_position_ids = [idx + 1 for idx in sorted(cond_idx)]  # Body uses positions 1-seq_len
-                N_cond = len(cond_tokens)
+            # Forward pass - model does augmentation internally
+            logits, loss = model(
+                input_ids=input_ids,
+                conditional_idx=batch_cond_idx,
+                evaluation_idx=batch_eval_idx,
+                unseen_idx=batch_unseen_idx
+            )
 
-                # Build body (BOS + masked body)
-                bos_token_id = augmenter.bos_token_id
-                mask_token_id = augmenter.mask_token_id
+            # Accumulate loss (loss is already averaged)
+            if loss is not None:
+                total_loss += loss.item() * batch_size
+                total_tokens += batch_size
 
-                seq_tokens = [bos_token_id]
-                seq_position_ids = [0]
-
-                # Body tokens: Keep cond + eval, only mask truly unseen tokens
-                # Mode 2 differs from training only in how conditioning is selected (boundary vs blockwise)
-                # But inference logic is the same: keep cond + eval visible in body
-                unseen_idx = set(unknown_idx) - set(eval_idx)
-
-                for j in range(seq_len):
-                    if j in unseen_idx:
-                        seq_tokens.append(mask_token_id)  # Mask only truly unseen tokens
-                    else:
-                        seq_tokens.append(sample_ids[j].item())  # Keep cond + eval visible
-                    seq_position_ids.append(j + 1)  # Body uses positions 1-seq_len
-
-                N_seq = len(seq_tokens)
-
-                # Create tensors
-                aug_input_ids = torch.tensor(cond_tokens + seq_tokens, dtype=torch.long, device=device)
-                position_ids = torch.tensor(cond_position_ids + seq_position_ids, dtype=torch.long, device=device)
-
-                # Create attention mask
-                attention_mask = create_prefix_conditional_mask(N_cond, N_seq, device=device)
-                attention_mask = attention_mask.unsqueeze(0).unsqueeze(0)  # [1, 1, L, L]
-
-                # Create labels (only for evaluation positions)
-                labels = torch.full_like(aug_input_ids, -100)
-                for eval_pos in eval_idx:
-                    new_pos = N_cond + 1 + eval_pos
-                    if new_pos < len(labels):
-                        labels[new_pos] = sample_ids[eval_pos].item()
-
-                # Forward pass
-                # Model returns (logits, loss) tuple
-                logits, _ = model(
-                    input_ids=aug_input_ids.unsqueeze(0),
-                    position_ids=position_ids.unsqueeze(0),
-                    attention_mask=attention_mask,
-                )
-                logits = logits.squeeze(0)
-
-                # Compute loss (with shift)
-                shift_logits = logits[:-1]
-                shift_labels = labels[1:]
-
-                valid_mask = (shift_labels != -100)
-                if valid_mask.sum() > 0:
-                    loss = F.cross_entropy(
-                        shift_logits[valid_mask],
-                        shift_labels[valid_mask],
-                        reduction='sum'
-                    )
-                    batch_loss += loss.item()
-                    batch_tokens += valid_mask.sum().item()
-
-            total_loss += batch_loss
-            total_tokens += batch_tokens
             all_eval_indices.extend(batch_eval_indices)
             num_batches += 1
 
@@ -295,52 +246,40 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
             attention_mask_1d = batch['attention_mask'].to(device)
             batch_size, seq_len = input_ids.shape
 
-            batch_loss = 0.0
-            batch_tokens = 0
             batch_eval_indices = []
 
-            # Process each sample individually (like Mode 2)
-            # This avoids the need for padding different-length sequences
+            # Sample indices for each sample in batch
+            batch_cond_idx = []
+            batch_eval_idx = []
+            batch_unseen_idx = []
+
             for i in range(batch_size):
-                sample_ids = input_ids[i]
                 sample_attention_mask = attention_mask_1d[i]
 
                 # Get valid (non-padding) positions
                 valid_positions = [j for j in range(seq_len) if sample_attention_mask[j] == 1]
 
-                # Augment single sequence (with valid positions)
-                result = augmenter.augment_sequence(sample_ids, device=device, valid_positions=valid_positions)
-
-                # Collect evaluation indices (with valid positions)
+                # Use augmenter to sample indices (same as training)
                 cond_idx, eval_idx, unknown_idx = augmenter.split_indices(seq_len, valid_positions=valid_positions)
+
+                batch_cond_idx.append(cond_idx)
+                batch_eval_idx.append(eval_idx)
+                batch_unseen_idx.append(unknown_idx)
                 batch_eval_indices.append(eval_idx)
 
-                # Forward pass for this single sample
-                # Model returns (logits, loss) tuple
-                logits, _ = model(
-                    input_ids=result['aug_input_ids'].unsqueeze(0),
-                    position_ids=result['position_ids'].unsqueeze(0),
-                    attention_mask=result['attention_mask'].unsqueeze(0).unsqueeze(0),
-                )
-                logits = logits.squeeze(0)
-                labels = result['labels']
+            # Forward pass - model does augmentation internally
+            logits, loss = model(
+                input_ids=input_ids,
+                conditional_idx=batch_cond_idx,
+                evaluation_idx=batch_eval_idx,
+                unseen_idx=batch_unseen_idx
+            )
 
-                # Compute loss (with shift)
-                shift_logits = logits[:-1]
-                shift_labels = labels[1:]
+            # Accumulate loss (loss is already averaged)
+            if loss is not None:
+                total_loss += loss.item() * batch_size
+                total_tokens += batch_size
 
-                valid_mask = (shift_labels != -100)
-                if valid_mask.sum() > 0:
-                    loss = F.cross_entropy(
-                        shift_logits[valid_mask],
-                        shift_labels[valid_mask],
-                        reduction='sum'
-                    )
-                    batch_loss += loss.item()
-                    batch_tokens += valid_mask.sum().item()
-
-            total_loss += batch_loss
-            total_tokens += batch_tokens
             all_eval_indices.extend(batch_eval_indices)
             num_batches += 1
 
