@@ -14,7 +14,7 @@
 # Model: distilgpt2 (81.9M params)
 
 echo "========================================="
-echo "CONDITIONAL TRAINING - MODERATE CONDITIONING (PLAN A)"
+echo "CONDITIONAL TRAINING - MODERATE CONDITIONING (PLAN A) -LEGACY version"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Job Name: $SLURM_JOB_NAME"
