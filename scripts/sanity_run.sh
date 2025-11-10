@@ -6,8 +6,21 @@
 set -e  # Exit on error
 
 # Activate conda environment
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate arbprob
+echo "Activating conda environment 'arbprob'..."
+source ~/miniconda3/etc/profile.d/conda.sh || {
+    echo "ERROR: Failed to source conda.sh"
+    exit 1
+}
+
+conda activate arbprob || {
+    echo "ERROR: Failed to activate conda environment 'arbprob'"
+    conda env list
+    exit 1
+}
+
+echo "✓ Conda environment activated: $CONDA_DEFAULT_ENV"
+echo "✓ Python path: $(which python3)"
+echo ""
 
 echo "======================================================================"
 echo "GPT-2 Implementation Sanity Check"
