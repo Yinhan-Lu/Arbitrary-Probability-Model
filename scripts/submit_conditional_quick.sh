@@ -66,7 +66,8 @@ echo "  Expected Time: ~5-8 minutes"
 echo "========================================="
 
 # Run training
-python3 train_conditional.py \
+python3 train.py \
+    --model_type conditional \
     --model_config $MODEL_CONFIG \
     --num_epochs 1 \
     --batch_size $BATCH_SIZE \
@@ -78,8 +79,6 @@ python3 train_conditional.py \
     --weight_decay 0.01 \
     --conditioning_sampling blockwise \
     --evaluation_sampling random \
-    --max_cond_blocks 2 \
-    --max_eval_blocks 2 \
     --cond_pct_min 0.2 \
     --cond_pct_max 0.4 \
     --eval_pct_min 0.2 \

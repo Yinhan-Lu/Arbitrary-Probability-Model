@@ -82,7 +82,8 @@ echo "  Max Eval Blocks: 2"
 echo "========================================="
 
 # Run training with distribution-based sampling
-python3 ./train_conditional.py \
+python3 ./train.py \
+    --model_type conditional \
     --model_config $MODEL_CONFIG \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \

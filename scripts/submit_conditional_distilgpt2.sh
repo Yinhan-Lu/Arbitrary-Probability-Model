@@ -79,7 +79,8 @@ echo "  Expected Time: ~60-90 minutes"
 echo "========================================="
 
 # Run training with evaluation
-python3 train_conditional.py \
+python3 train.py \
+    --model_type conditional \
     --model_config $MODEL_CONFIG \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
@@ -96,8 +97,6 @@ python3 train_conditional.py \
     --adam_epsilon 1e-8 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
     --cond_pct_min 0.2 \
     --cond_pct_max 0.4 \
     --eval_pct_min 0.2 \
@@ -141,7 +140,8 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  tail -f $OUTPUT_DIR/$EXP_NAME*/logs/training.log"
     echo ""
     echo "To use the trained model:"
-    echo "  python3 train_conditional.py \\"
+    echo "  python3 train.py \
+    --model_type conditional \\"
     echo "    --pretrained_model_path $OUTPUT_DIR/$EXP_NAME*/checkpoints/final_model.pt \\"
     echo "    --resume_training"
 else

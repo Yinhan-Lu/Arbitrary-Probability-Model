@@ -81,7 +81,8 @@ echo "  CPUs: $SLURM_CPUS_PER_TASK"
 echo "========================================="
 
 # Run training with H100-optimized settings
-python train_distilgpt2.py \
+python train.py \
+    --model_type baseline \
     --model_config distilgpt2 \
     --dataset_name wikipedia \
     --dataset_config "20220301.en" \

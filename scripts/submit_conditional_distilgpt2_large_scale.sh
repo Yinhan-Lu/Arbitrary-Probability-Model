@@ -99,7 +99,8 @@ echo "  ~5-7 days on A100"
 echo "========================================="
 
 # Run large-scale training
-python3 ./train_conditional.py \
+python3 ./train.py \
+    --model_type conditional \
     --model_config $MODEL_CONFIG \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
@@ -120,8 +121,6 @@ python3 ./train_conditional.py \
     --eval_pct_max $EVAL_PCT_MAX \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
     --min_conditioning 1 \
     --min_evaluation 1 \
     --mode2_boundary_cond_pct_min 0.1 \

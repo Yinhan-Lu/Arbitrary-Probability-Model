@@ -80,7 +80,8 @@ echo "  Warmup Steps: $WARMUP_STEPS"
 echo "========================================="
 
 # Run training
-python3 train_distilgpt2.py \
+python3 train.py \
+    --model_type baseline \
     --model_config distilgpt2 \
     --dataset_name wikipedia \
     --dataset_config "20220301.en" \

@@ -107,7 +107,8 @@ echo "  Max Eval Batches: 20 (320 samples)"
 echo "========================================="
 
 # Run training with standard hyperparameters
-python3 ./train_conditional.py \
+python3 ./train.py \
+    --model_type conditional \
     --model_config $MODEL_CONFIG \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
@@ -128,8 +129,6 @@ python3 ./train_conditional.py \
     --eval_pct_max $EVAL_PCT_MAX \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
     --min_conditioning 1 \
     --min_evaluation 1 \
     --mode2_boundary_cond_pct_min 0.1 \
@@ -178,7 +177,8 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  python3 utils/quickstart_visualization.py $OUTPUT_DIR/$EXP_NAME*"
     echo ""
     echo "To use the trained model:"
-    echo "  python3 train_conditional.py \\"
+    echo "  python3 train.py \
+    --model_type conditional \\"
     echo "    --pretrained_model_path $OUTPUT_DIR/$EXP_NAME*/checkpoints/best_model.pt \\"
     echo "    --resume_training"
 else
