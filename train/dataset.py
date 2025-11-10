@@ -399,19 +399,22 @@ class StreamingWikipediaDataset:
                 }
 
 
-def create_simple_collate_fn(pad_token_id=50256):
+class SimpleCollateFn:
     """
-    Create simple collate function that only does dynamic padding (no augmentation)
+    Simple collate function that only does dynamic padding (no augmentation)
 
+    Implemented as a class to be picklable for multiprocessing in DataLoader.
     Used for validation dataloaders where evaluation modes apply their own augmentation.
-
-    Args:
-        pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
-
-    Returns:
-        collate_fn function for DataLoader
     """
-    def simple_collate_fn(batch):
+
+    def __init__(self, pad_token_id=50256):
+        """
+        Args:
+            pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
+        """
+        self.pad_token_id = pad_token_id
+
+    def __call__(self, batch):
         """
         Collate function: dynamic padding only, no augmentation
 
@@ -440,7 +443,7 @@ def create_simple_collate_fn(pad_token_id=50256):
                 # Pad input_ids
                 padded_input = torch.cat([
                     input_ids,
-                    torch.full((pad_len,), pad_token_id, dtype=torch.long)
+                    torch.full((pad_len,), self.pad_token_id, dtype=torch.long)
                 ])
 
                 # Pad attention_mask
@@ -461,24 +464,41 @@ def create_simple_collate_fn(pad_token_id=50256):
             'attention_mask': torch.stack(batch_attention_masks)
         }
 
-    return simple_collate_fn
 
-
-def create_augment_collate_fn(augmenter, device='cpu'):
+def create_simple_collate_fn(pad_token_id=50256):
     """
-    Create collate function that does augmentation + dynamic padding
+    Create simple collate function that only does dynamic padding (no augmentation)
 
-    This is the optimal approach: augment first, then dynamically pad to
-    the longest augmented sequence in the batch (single padding pass).
+    Used for validation dataloaders where evaluation modes apply their own augmentation.
 
     Args:
-        augmenter: ConditionalAugmenter instance
-        device: Device for augmentation ('cpu' recommended for DataLoader workers)
+        pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
 
     Returns:
-        collate_fn function for DataLoader
+        SimpleCollateFn instance (picklable for multiprocessing)
     """
-    def augment_collate_fn(batch):
+    return SimpleCollateFn(pad_token_id)
+
+
+class AugmentCollateFn:
+    """
+    Collate function that does augmentation + dynamic padding
+
+    Implemented as a class to be picklable for multiprocessing in DataLoader.
+    This is the optimal approach: augment first, then dynamically pad to
+    the longest augmented sequence in the batch (single padding pass).
+    """
+
+    def __init__(self, augmenter, device='cpu'):
+        """
+        Args:
+            augmenter: ConditionalAugmenter instance
+            device: Device for augmentation ('cpu' recommended for DataLoader workers)
+        """
+        self.augmenter = augmenter
+        self.device = device
+
+    def __call__(self, batch):
         """
         Collate function: augment each sample, then dynamic padding
 
@@ -503,9 +523,9 @@ def create_augment_collate_fn(augmenter, device='cpu'):
             valid_positions = [i for i in range(len(input_ids)) if attention_mask[i] == 1]
 
             # Augment this sample
-            aug_result = augmenter.augment_sequence(
+            aug_result = self.augmenter.augment_sequence(
                 input_ids,
-                device=device,
+                device=self.device,
                 valid_positions=valid_positions
             )
             augmented_samples.append(aug_result)
@@ -527,25 +547,25 @@ def create_augment_collate_fn(augmenter, device='cpu'):
                 # Pad input_ids with pad token (50256 for GPT-2)
                 padded_input = torch.cat([
                     sample['aug_input_ids'],
-                    torch.full((pad_len,), 50256, dtype=torch.long, device=device)
+                    torch.full((pad_len,), 50256, dtype=torch.long, device=self.device)
                 ])
 
                 # Pad position_ids with 0
                 padded_position = torch.cat([
                     sample['position_ids'],
-                    torch.zeros(pad_len, dtype=torch.long, device=device)
+                    torch.zeros(pad_len, dtype=torch.long, device=self.device)
                 ])
 
                 # Pad labels with -100 (ignored by loss function)
                 padded_label = torch.cat([
                     sample['labels'],
-                    torch.full((pad_len,), -100, dtype=torch.long, device=device)
+                    torch.full((pad_len,), -100, dtype=torch.long, device=self.device)
                 ])
 
                 # Pad attention mask (2D matrix)
                 # Original shape: (current_len, current_len)
                 # Target shape: (max_len, max_len)
-                padded_mask = torch.zeros(max_len, max_len, dtype=sample['attention_mask'].dtype, device=device)
+                padded_mask = torch.zeros(max_len, max_len, dtype=sample['attention_mask'].dtype, device=self.device)
                 padded_mask[:current_len, :current_len] = sample['attention_mask']
                 # Let padding positions attend to valid content (prevents softmax NaN)
                 padded_mask[current_len:, :current_len] = 1
@@ -569,7 +589,22 @@ def create_augment_collate_fn(augmenter, device='cpu'):
             'attention_mask': torch.stack(batch_attention_masks).unsqueeze(1),  # Add head dim: (B, 1, L, L)
         }
 
-    return augment_collate_fn
+
+def create_augment_collate_fn(augmenter, device='cpu'):
+    """
+    Create collate function that does augmentation + dynamic padding
+
+    This is the optimal approach: augment first, then dynamically pad to
+    the longest augmented sequence in the batch (single padding pass).
+
+    Args:
+        augmenter: ConditionalAugmenter instance
+        device: Device for augmentation ('cpu' recommended for DataLoader workers)
+
+    Returns:
+        AugmentCollateFn instance (picklable for multiprocessing)
+    """
+    return AugmentCollateFn(augmenter, device)
 
 
 def get_dataloader(
