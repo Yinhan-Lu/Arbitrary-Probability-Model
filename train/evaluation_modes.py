@@ -193,10 +193,12 @@ def evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_ba
                 unseen_idx=batch_unseen_idx
             )
 
-            # Accumulate loss (loss is already averaged)
+            # Accumulate loss (model returns mean over all eval tokens in batch)
+            # Count actual evaluation tokens to properly weight the loss
             if loss is not None:
-                total_loss += loss.item() * batch_size
-                total_tokens += batch_size
+                total_eval_tokens = sum(len(eval_idx) for eval_idx in batch_eval_idx)
+                total_loss += loss.item() * total_eval_tokens
+                total_tokens += total_eval_tokens
 
             all_eval_indices.extend(batch_eval_indices)
             num_batches += 1
@@ -275,10 +277,12 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
                 unseen_idx=batch_unseen_idx
             )
 
-            # Accumulate loss (loss is already averaged)
+            # Accumulate loss (model returns mean over all eval tokens in batch)
+            # Count actual evaluation tokens to properly weight the loss
             if loss is not None:
-                total_loss += loss.item() * batch_size
-                total_tokens += batch_size
+                total_eval_tokens = sum(len(eval_idx) for eval_idx in batch_eval_idx)
+                total_loss += loss.item() * total_eval_tokens
+                total_tokens += total_eval_tokens
 
             all_eval_indices.extend(batch_eval_indices)
             num_batches += 1
