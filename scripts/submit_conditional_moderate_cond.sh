@@ -65,6 +65,12 @@ EVAL_SAMPLES=10000
 LEARNING_RATE=5e-4
 NUM_EPOCHS=5
 
+# === AUGMENTATION DETACH OPTION (for debugging gradient flow) ===
+# Set to "true" to detach augmentation tensors (mimics legacy external augmentation)
+# Set to "false" for default behavior (gradients flow through augmentation)
+# This is useful for investigating Mode 2 performance differences
+DETACH_AUGMENTATION="false"  # Change to "true" to enable detach
+
 echo "Training Configuration (PLAN A - Conservative Anti-Overfitting):"
 echo "  Model: $MODEL_CONFIG (81.9M params)"
 echo "  Epochs: $NUM_EPOCHS"
@@ -85,9 +91,17 @@ echo "Regularization Changes:"
 echo "  Weight Decay: 0.1 (increased from 0.01)"
 echo "  More meaningful conditioning task (harder to memorize)"
 echo "========================================="
+echo "Augmentation Configuration:"
+echo "  Detach Augmentation: $DETACH_AUGMENTATION"
+if [ "$DETACH_AUGMENTATION" = "true" ]; then
+    echo "  → Gradients BLOCKED through augmentation (legacy-like)"
+else
+    echo "  → Gradients FLOW through augmentation (default)"
+fi
+echo "========================================="
 
-# Run training with distribution-based sampling
-python3 ./train.py \
+# Build training command with conditional detach augmentation flag
+TRAIN_CMD="python3 ./train.py \
     --model_type conditional \
     --model_config $MODEL_CONFIG \
     --num_epochs $NUM_EPOCHS \
@@ -112,7 +126,15 @@ python3 ./train.py \
     --min_conditioning 0 \
     --min_evaluation 1 \
     --mode2_boundary_cond_pct_min 0.1 \
-    --mode2_boundary_cond_pct_max 0.3 \
+    --mode2_boundary_cond_pct_max 0.3"
+
+# Add detach_augmentation flag if enabled
+if [ "$DETACH_AUGMENTATION" = "true" ]; then
+    TRAIN_CMD="$TRAIN_CMD --detach_augmentation"
+fi
+
+# Add remaining arguments
+TRAIN_CMD="$TRAIN_CMD \
     --logging_steps 10 \
     --eval_steps 500 \
     --save_steps 1000 \
@@ -121,7 +143,10 @@ python3 ./train.py \
     --output_dir $OUTPUT_DIR \
     --exp_name $EXP_NAME \
     --device cuda \
-    --num_workers 4
+    --num_workers 4"
+
+# Run training with distribution-based sampling
+eval $TRAIN_CMD
 
 EXIT_CODE=$?
 

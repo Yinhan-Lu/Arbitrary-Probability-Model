@@ -65,6 +65,11 @@ class ConditionalTrainer(BaseTrainer):
         # Get model configuration
         self.config = get_config(self.args.model_config)
 
+        # Set detach_augmentation parameter from args
+        if hasattr(self.args, 'detach_augmentation'):
+            self.config.detach_augmentation = self.args.detach_augmentation
+            logger.info(f"Detach augmentation: {self.config.detach_augmentation}")
+
         # Initialize token manager with special tokens
         self.token_manager = TokenManager(
             add_mask_token=True,

@@ -346,6 +346,13 @@ def parse_args():
             choices=["random", "blockwise"],
             help="Sampling mode for evaluation set: 'random' or 'blockwise'"
         )
+        parser.add_argument(
+            "--detach_augmentation",
+            action="store_true",
+            default=False,
+            help="Detach augmentation tensors to prevent gradient flow through augmentation operations. "
+                 "This makes internal augmentation behave like legacy external augmentation (for debugging/comparison)"
+        )
 
         # Mode 2 (Boundary filling) evaluation parameters
         parser.add_argument(

@@ -23,6 +23,7 @@ class GPT2Config:
         layer_norm_eps=1e-5,
         ffn_mult=4,
         activation_function="gelu_new",
+        detach_augmentation=False,
         **kwargs
     ):
         self.vocab_size = vocab_size
@@ -35,6 +36,7 @@ class GPT2Config:
         self.ffn_mult = ffn_mult
         self.mlp_hidden_size = n_embd * ffn_mult
         self.activation_function = activation_function
+        self.detach_augmentation = detach_augmentation
 
 
 class NewGELU(nn.Module):
@@ -578,11 +580,19 @@ class GPT2Model(nn.Module):
                 device=input_ids.device
             )
 
-            # Use augmented inputs
-            input_ids = aug_input_ids
-            position_ids = aug_position_ids
-            attention_mask = aug_attention_mask
-            labels = aug_labels  # Auto-generated labels
+            # Conditional detach: prevent gradient flow through augmentation if configured
+            # This makes internal augmentation behave like legacy external augmentation
+            if self.config.detach_augmentation:
+                input_ids = aug_input_ids.detach()
+                position_ids = aug_position_ids.detach() if aug_position_ids is not None else None
+                attention_mask = aug_attention_mask.detach() if aug_attention_mask is not None else None
+                labels = aug_labels.detach() if aug_labels is not None else None
+            else:
+                # Default: allow gradients to flow through augmentation operations
+                input_ids = aug_input_ids
+                position_ids = aug_position_ids
+                attention_mask = aug_attention_mask
+                labels = aug_labels  # Auto-generated labels
 
         else:
             # === STANDARD MODE ===
