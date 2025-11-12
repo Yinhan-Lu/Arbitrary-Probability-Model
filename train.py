@@ -30,6 +30,9 @@ import sys
 import argparse
 import logging
 from pathlib import Path
+import random
+import numpy as np
+import torch
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -43,6 +46,35 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+def set_seed(seed):
+    """
+    Set random seed for reproducibility across all random sources
+
+    This function sets seeds for:
+    - Python's built-in random module
+    - NumPy random generator
+    - PyTorch CPU operations
+    - PyTorch CUDA operations (all GPUs)
+
+    Args:
+        seed: Integer seed value
+
+    Note:
+        - DataLoader workers need separate seed control via worker_init_fn
+        - For full determinism, also set CUBLAS and CUDNN environment variables
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Optional: Enable deterministic mode (may reduce performance)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
+
+    logger.info(f"Random seed set to: {seed}")
 
 
 def parse_args():
@@ -213,6 +245,14 @@ def parse_args():
         help="Run evaluation during training"
     )
 
+    # Reproducibility arguments
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility"
+    )
+
     # Output arguments
     parser.add_argument(
         "--output_dir",
@@ -377,6 +417,9 @@ def main():
 
     # Parse arguments
     args = parse_args()
+
+    # Set random seed for reproducibility
+    set_seed(args.seed)
 
     # Print configuration
     logger.info("=" * 80)

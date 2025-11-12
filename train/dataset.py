@@ -733,6 +733,30 @@ def create_augment_collate_fn(augmenter, device='cpu'):
     return AugmentCollateFn(augmenter, device)
 
 
+def worker_init_fn(worker_id):
+    """
+    Initialize random seed for each DataLoader worker
+
+    This ensures that each worker process has a different random seed,
+    preventing duplicated sampling in multiprocessing mode while still
+    maintaining reproducibility.
+
+    The worker seed is derived from PyTorch's initial seed (which is set
+    by torch.manual_seed in the main process), combined with the worker ID.
+
+    Args:
+        worker_id: Worker process ID (0 to num_workers-1)
+    """
+    import numpy as np
+    import random
+    import torch
+
+    # Get the initial seed from PyTorch (set in main process)
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 def get_dataloader(
     config,
     split="train",
@@ -812,7 +836,8 @@ def get_dataloader(
             shuffle=(split == "train"),
             num_workers=num_workers,
             pin_memory=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
+            worker_init_fn=worker_init_fn  # Ensure reproducible worker seeds
         )
 
         return dataloader
