@@ -15,6 +15,7 @@ All test scripts are organized in this `tests/` folder for clarity and maintaina
 | **test_checkpoint_loading.py** | Verify checkpoint save/load functionality | ~30s | `python tests/test_checkpoint_loading.py` |
 | **test_pretrained_loading.py** | Test HuggingFace model loading | ~1 min | `python tests/test_pretrained_loading.py` |
 | **test_detach_augmentation.py** | Test detach_augmentation parameter functionality | ~5s | `python tests/test_detach_augmentation.py` |
+| **test_detach_minimal.py** | Minimal detach test (MPS/CPU compatible, no heavy dependencies) | ~5s | `python tests/test_detach_minimal.py` |
 | **debug_mode2_comparison.py** | Compare Legacy vs New Mode 2 augmentation (requires GPU) | ~30s | `python tests/debug_mode2_comparison.py` |
 | **debug_mode2_simple.py** | Simplified Mode 2 logic comparison (no GPU required) | ~1s | `python tests/debug_mode2_simple.py` |
 
@@ -52,6 +53,7 @@ python tests/sanity.py
 
 ### 3. Debug Tests (Special Purpose)
 - `test_detach_augmentation.py` - Verify detach_augmentation feature
+- `test_detach_minimal.py` - Minimal detach test for local MPS/CPU testing
 - `debug_mode2_comparison.py` - Deep dive into Mode 2 augmentation differences
 - `debug_mode2_simple.py` - Simplified logic comparison (no dependencies)
 
