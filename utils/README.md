@@ -96,17 +96,28 @@ python utils/quickstart_visualization.py --all --pattern "distilgpt2_*"
 **Usage:**
 
 ```bash
-# Analyze legacy vs new pipeline
-python utils/analyze_pipeline_differences.py \
-    result_of_two_pipeline/legacy_pipeline \
-    result_of_two_pipeline/new_pipeline \
-    --output pipeline_analysis
+# List all available experiments
+python utils/analyze_pipeline_differences.py --list
 
-# Compare any two experiments
+# Interactive mode (select from list)
+python utils/analyze_pipeline_differences.py --interactive
+
+# Use experiment names directly (auto-detected in experiments/)
+python utils/analyze_pipeline_differences.py exp1_name exp2_name
+
+# Use partial names (glob matching)
+python utils/analyze_pipeline_differences.py moderate detached
+
+# Use full paths (also works)
 python utils/analyze_pipeline_differences.py \
     experiments/exp1 \
     experiments/exp2 \
     --output comparison_results
+
+# Specify custom base directory
+python utils/analyze_pipeline_differences.py \
+    exp1 exp2 \
+    --base-dir result_of_two_pipeline
 ```
 
 **Outputs:**
@@ -153,16 +164,23 @@ python utils/analyze_pipeline_differences.py \
 **Usage:**
 
 ```bash
-# Compare two experiments
-python utils/compare_experiments.py \
-    result_of_two_pipeline/legacy_pipeline \
-    result_of_two_pipeline/new_pipeline
+# List all available experiments
+python utils/compare_experiments.py --list
+
+# Interactive mode (select from list)
+python utils/compare_experiments.py --interactive
+
+# Use experiment names directly
+python utils/compare_experiments.py exp1_name exp2_name
+
+# Use partial names (glob matching)
+python utils/compare_experiments.py moderate detached
 
 # Save results to file
-python utils/compare_experiments.py \
-    experiments/exp1 \
-    experiments/exp2 \
-    --output comparison_stats.txt
+python utils/compare_experiments.py exp1 exp2 --output comparison_stats.txt
+
+# Specify custom base directory
+python utils/compare_experiments.py exp1 exp2 --base-dir result_of_two_pipeline
 ```
 
 **Outputs (printed to console):**

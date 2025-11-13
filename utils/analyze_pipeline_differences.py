@@ -38,6 +38,155 @@ print("PIPELINE DIFFERENCES ANALYSIS")
 print("=" * 100)
 
 
+def list_experiments(base_dir: str = "experiments") -> List[Path]:
+    """
+    List all experiment directories in base_dir
+
+    Args:
+        base_dir: Base directory containing experiments
+
+    Returns:
+        List of experiment directory paths
+    """
+    base_path = Path(base_dir)
+
+    if not base_path.exists():
+        return []
+
+    # Find directories that contain logs/metrics.csv
+    experiments = []
+    for item in base_path.iterdir():
+        if item.is_dir():
+            # Check if this looks like an experiment (has logs/metrics.csv)
+            has_metrics = (item / "logs" / "metrics.csv").exists() or \
+                         (item / "logs.pdf" / "metrics.csv").exists() or \
+                         (item / "metrics.csv").exists()
+            if has_metrics:
+                experiments.append(item)
+
+    return sorted(experiments)
+
+
+def resolve_experiment_path(name_or_path: str, base_dir: str = "experiments") -> Path:
+    """
+    Resolve experiment name to full path
+
+    Supports:
+    - Full paths (returned as-is)
+    - Experiment names (prefixed with base_dir/)
+    - Partial matches (glob)
+
+    Args:
+        name_or_path: Experiment name or path
+        base_dir: Base directory for experiments
+
+    Returns:
+        Resolved path
+
+    Raises:
+        FileNotFoundError: If experiment not found or ambiguous
+    """
+    path = Path(name_or_path)
+
+    # If it's an absolute path or starts with base_dir, use as-is
+    if path.is_absolute() or str(path).startswith(f"{base_dir}/"):
+        if path.exists():
+            return path
+        else:
+            raise FileNotFoundError(f"Experiment not found: {path}")
+
+    # Try prefixing with base_dir
+    base_path = Path(base_dir)
+    candidate = base_path / name_or_path
+
+    if candidate.exists():
+        return candidate
+
+    # Try glob matching
+    matches = list(base_path.glob(f"*{name_or_path}*"))
+    matches = [m for m in matches if m.is_dir()]
+
+    if len(matches) == 0:
+        raise FileNotFoundError(
+            f"No experiment matching '{name_or_path}' found in {base_dir}/\n"
+            f"Available experiments: {[e.name for e in list_experiments(base_dir)]}"
+        )
+    elif len(matches) == 1:
+        return matches[0]
+    else:
+        raise ValueError(
+            f"Ambiguous experiment name '{name_or_path}'. Multiple matches:\n" +
+            "\n".join([f"  - {m.name}" for m in matches]) +
+            "\nPlease be more specific."
+        )
+
+
+def select_experiments_interactive(base_dir: str = "experiments") -> Tuple[Path, Path]:
+    """
+    Interactive selection of two experiments
+
+    Args:
+        base_dir: Base directory containing experiments
+
+    Returns:
+        Tuple of (exp1_path, exp2_path)
+    """
+    experiments = list_experiments(base_dir)
+
+    if len(experiments) < 2:
+        raise ValueError(f"Need at least 2 experiments in {base_dir}/, found {len(experiments)}")
+
+    print("\nAvailable experiments:")
+    print("=" * 80)
+    for i, exp in enumerate(experiments, 1):
+        print(f"  [{i:2d}] {exp.name}")
+    print("=" * 80)
+    print("")
+
+    # Get first selection
+    while True:
+        try:
+            choice1 = int(input("Select first experiment (number): "))
+            if 1 <= choice1 <= len(experiments):
+                exp1 = experiments[choice1 - 1]
+                break
+            else:
+                print(f"Please enter a number between 1 and {len(experiments)}")
+        except (ValueError, KeyboardInterrupt):
+            print("\nSelection cancelled")
+            sys.exit(0)
+
+    # Get second selection
+    while True:
+        try:
+            choice2 = int(input("Select second experiment (number): "))
+            if 1 <= choice2 <= len(experiments):
+                if choice2 != choice1:
+                    exp2 = experiments[choice2 - 1]
+                    break
+                else:
+                    print("Please select a different experiment")
+            else:
+                print(f"Please enter a number between 1 and {len(experiments)}")
+        except (ValueError, KeyboardInterrupt):
+            print("\nSelection cancelled")
+            sys.exit(0)
+
+    print("")
+    print("Selected experiments:")
+    print(f"  Exp 1: {exp1}")
+    print(f"  Exp 2: {exp2}")
+    print("")
+
+    # Confirm
+    confirm = input("Proceed with analysis? (y/n): ").lower().strip()
+    if confirm != 'y':
+        print("Analysis cancelled")
+        sys.exit(0)
+
+    return exp1, exp2
+
+
 def load_metrics(exp_dir: Path) -> pd.DataFrame:
     """
     Load metrics.csv from experiment directory
@@ -415,16 +564,73 @@ def generate_summary_report(legacy_df: pd.DataFrame,
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze pipeline performance differences')
-    parser.add_argument('legacy_dir', type=str, help='Path to legacy experiment directory')
-    parser.add_argument('new_dir', type=str, help='Path to new experiment directory')
+    parser = argparse.ArgumentParser(
+        description='Analyze pipeline performance differences',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # List all experiments
+  python utils/analyze_pipeline_differences.py --list
+
+  # Interactive mode
+  python utils/analyze_pipeline_differences.py --interactive
+
+  # Use experiment names (auto-detected in experiments/)
+  python utils/analyze_pipeline_differences.py exp1_name exp2_name
+
+  # Use full paths
+  python utils/analyze_pipeline_differences.py experiments/exp1 experiments/exp2
+        """
+    )
+    parser.add_argument('exp1', type=str, nargs='?', default=None,
+                       help='First experiment (name or path)')
+    parser.add_argument('exp2', type=str, nargs='?', default=None,
+                       help='Second experiment (name or path)')
     parser.add_argument('--output', type=str, default='pipeline_analysis',
                        help='Output directory for results (default: pipeline_analysis)')
+    parser.add_argument('--base-dir', type=str, default='experiments',
+                       help='Base directory for experiments (default: experiments)')
+    parser.add_argument('--list', '-l', action='store_true',
+                       help='List all available experiments and exit')
+    parser.add_argument('--interactive', '-i', action='store_true',
+                       help='Interactive mode: select experiments from list')
 
     args = parser.parse_args()
 
-    legacy_dir = Path(args.legacy_dir)
-    new_dir = Path(args.new_dir)
+    # Handle --list mode
+    if args.list:
+        experiments = list_experiments(args.base_dir)
+        if not experiments:
+            print(f"No experiments found in {args.base_dir}/")
+            sys.exit(1)
+
+        print(f"\nAvailable experiments in {args.base_dir}/:")
+        print("=" * 80)
+        for i, exp in enumerate(experiments, 1):
+            print(f"  [{i:2d}] {exp.name}")
+        print("=" * 80)
+        print(f"\nTotal: {len(experiments)} experiments")
+        sys.exit(0)
+
+    # Handle --interactive mode
+    if args.interactive:
+        exp1_path, exp2_path = select_experiments_interactive(args.base_dir)
+    else:
+        # Normal mode: require both arguments
+        if not args.exp1 or not args.exp2:
+            parser.error("Two experiments required (or use --interactive mode)")
+
+        # Resolve paths
+        try:
+            exp1_path = resolve_experiment_path(args.exp1, args.base_dir)
+            exp2_path = resolve_experiment_path(args.exp2, args.base_dir)
+        except (FileNotFoundError, ValueError) as e:
+            print(f"\n❌ Error: {e}\n")
+            sys.exit(1)
+
+    # Use resolved paths
+    legacy_dir = exp1_path
+    new_dir = exp2_path
     output_dir = Path(args.output)
 
     # Create output directory

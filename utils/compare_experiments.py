@@ -33,6 +33,116 @@ print("DETAILED STATISTICAL COMPARISON")
 print("=" * 100)
 
 
+def list_experiments(base_dir: str = "experiments"):
+    """List all experiment directories in base_dir"""
+    from pathlib import Path
+    base_path = Path(base_dir)
+
+    if not base_path.exists():
+        return []
+
+    experiments = []
+    for item in base_path.iterdir():
+        if item.is_dir():
+            has_metrics = (item / "logs" / "metrics.csv").exists() or \
+                         (item / "logs.pdf" / "metrics.csv").exists() or \
+                         (item / "metrics.csv").exists()
+            if has_metrics:
+                experiments.append(item)
+
+    return sorted(experiments)
+
+
+def resolve_experiment_path(name_or_path: str, base_dir: str = "experiments"):
+    """Resolve experiment name to full path"""
+    from pathlib import Path
+    path = Path(name_or_path)
+
+    if path.is_absolute() or str(path).startswith(f"{base_dir}/"):
+        if path.exists():
+            return path
+        else:
+            raise FileNotFoundError(f"Experiment not found: {path}")
+
+    base_path = Path(base_dir)
+    candidate = base_path / name_or_path
+
+    if candidate.exists():
+        return candidate
+
+    matches = list(base_path.glob(f"*{name_or_path}*"))
+    matches = [m for m in matches if m.is_dir()]
+
+    if len(matches) == 0:
+        raise FileNotFoundError(
+            f"No experiment matching '{name_or_path}' found in {base_dir}/\n"
+            f"Available experiments: {[e.name for e in list_experiments(base_dir)]}"
+        )
+    elif len(matches) == 1:
+        return matches[0]
+    else:
+        raise ValueError(
+            f"Ambiguous experiment name '{name_or_path}'. Multiple matches:\n" +
+            "\n".join([f"  - {m.name}" for m in matches]) +
+            "\nPlease be more specific."
+        )
+
+
+def select_experiments_interactive(base_dir: str = "experiments"):
+    """Interactive selection of two experiments"""
+    experiments = list_experiments(base_dir)
+
+    if len(experiments) < 2:
+        raise ValueError(f"Need at least 2 experiments in {base_dir}/, found {len(experiments)}")
+
+    print("\nAvailable experiments:")
+    print("=" * 80)
+    for i, exp in enumerate(experiments, 1):
+        print(f"  [{i:2d}] {exp.name}")
+    print("=" * 80)
+    print("")
+
+    while True:
+        try:
+            choice1 = int(input("Select first experiment (number): "))
+            if 1 <= choice1 <= len(experiments):
+                exp1 = experiments[choice1 - 1]
+                break
+            else:
+                print(f"Please enter a number between 1 and {len(experiments)}")
+        except (ValueError, KeyboardInterrupt):
+            print("\nSelection cancelled")
+            sys.exit(0)
+
+    while True:
+        try:
+            choice2 = int(input("Select second experiment (number): "))
+            if 1 <= choice2 <= len(experiments):
+                if choice2 != choice1:
+                    exp2 = experiments[choice2 - 1]
+                    break
+                else:
+                    print("Please select a different experiment")
+            else:
+                print(f"Please enter a number between 1 and {len(experiments)}")
+        except (ValueError, KeyboardInterrupt):
+            print("\nSelection cancelled")
+            sys.exit(0)
+
+    print("")
+    print("Selected experiments:")
+    print(f"  Exp 1: {exp1}")
+    print(f"  Exp 2: {exp2}")
+    print("")
+
+    confirm = input("Proceed with comparison? (y/n): ").lower().strip()
+    if confirm != 'y':
+        print("Comparison cancelled")
+        sys.exit(0)
+
+    return exp1, exp2
+
+
 def load_metrics(exp_dir: Path) -> pd.DataFrame:
     """Load metrics.csv from experiment directory"""
     possible_paths = [
@@ -214,16 +324,73 @@ def analyze_training_dynamics(legacy_df: pd.DataFrame,
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Detailed statistical comparison of experiments')
-    parser.add_argument('legacy_dir', type=str, help='Path to legacy experiment directory')
-    parser.add_argument('new_dir', type=str, help='Path to new experiment directory')
+    parser = argparse.ArgumentParser(
+        description='Detailed statistical comparison of experiments',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # List all experiments
+  python utils/compare_experiments.py --list
+
+  # Interactive mode
+  python utils/compare_experiments.py --interactive
+
+  # Use experiment names (auto-detected in experiments/)
+  python utils/compare_experiments.py exp1_name exp2_name
+
+  # Use full paths
+  python utils/compare_experiments.py experiments/exp1 experiments/exp2
+        """
+    )
+    parser.add_argument('exp1', type=str, nargs='?', default=None,
+                       help='First experiment (name or path)')
+    parser.add_argument('exp2', type=str, nargs='?', default=None,
+                       help='Second experiment (name or path)')
     parser.add_argument('--output', type=str, default=None,
                        help='Optional output file for results (default: print to console)')
+    parser.add_argument('--base-dir', type=str, default='experiments',
+                       help='Base directory for experiments (default: experiments)')
+    parser.add_argument('--list', '-l', action='store_true',
+                       help='List all available experiments and exit')
+    parser.add_argument('--interactive', '-i', action='store_true',
+                       help='Interactive mode: select experiments from list')
 
     args = parser.parse_args()
 
-    legacy_dir = Path(args.legacy_dir)
-    new_dir = Path(args.new_dir)
+    # Handle --list mode
+    if args.list:
+        experiments = list_experiments(args.base_dir)
+        if not experiments:
+            print(f"No experiments found in {args.base_dir}/")
+            sys.exit(1)
+
+        print(f"\nAvailable experiments in {args.base_dir}/:")
+        print("=" * 80)
+        for i, exp in enumerate(experiments, 1):
+            print(f"  [{i:2d}] {exp.name}")
+        print("=" * 80)
+        print(f"\nTotal: {len(experiments)} experiments")
+        sys.exit(0)
+
+    # Handle --interactive mode
+    if args.interactive:
+        exp1_path, exp2_path = select_experiments_interactive(args.base_dir)
+    else:
+        # Normal mode: require both arguments
+        if not args.exp1 or not args.exp2:
+            parser.error("Two experiments required (or use --interactive mode)")
+
+        # Resolve paths
+        try:
+            exp1_path = resolve_experiment_path(args.exp1, args.base_dir)
+            exp2_path = resolve_experiment_path(args.exp2, args.base_dir)
+        except (FileNotFoundError, ValueError) as e:
+            print(f"\n❌ Error: {e}\n")
+            sys.exit(1)
+
+    # Use resolved paths
+    legacy_dir = exp1_path
+    new_dir = exp2_path
 
     print(f"\n📊 Loading experiments...")
     print(f"  Legacy: {legacy_dir}")
