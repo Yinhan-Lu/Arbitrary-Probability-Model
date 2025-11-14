@@ -241,8 +241,13 @@ def train_epoch(model, dataloader, augmenter, adapter, optimizer, scheduler, sca
         input_ids = batch['input_ids'].to(device)
 
         # Data augmentation (on CPU to reduce GPU memory)
+        # Note: Must use augment_sequence (not augment_batch) to preserve conditioning/evaluation indices
         input_ids_cpu = input_ids.cpu()
-        aug_batch = augmenter.augment_batch(input_ids_cpu)
+        batch_size = input_ids_cpu.size(0)
+        aug_batch = []
+        for i in range(batch_size):
+            result = augmenter.augment_sequence(input_ids_cpu[i], device='cpu')
+            aug_batch.append(result)
 
         # Convert to Sigma GPT format
         sigmagpt_batch = adapter.convert_batch(aug_batch, input_ids_cpu)
@@ -338,8 +343,13 @@ def evaluate(model, dataloader, augmenter, adapter, device, args):
         input_ids = batch['input_ids'].to(device)
 
         # Data augmentation
+        # Note: Must use augment_sequence (not augment_batch) to preserve conditioning/evaluation indices
         input_ids_cpu = input_ids.cpu()
-        aug_batch = augmenter.augment_batch(input_ids_cpu)
+        batch_size = input_ids_cpu.size(0)
+        aug_batch = []
+        for i in range(batch_size):
+            result = augmenter.augment_sequence(input_ids_cpu[i], device='cpu')
+            aug_batch.append(result)
 
         # Convert to Sigma GPT format
         sigmagpt_batch = adapter.convert_batch(aug_batch, input_ids_cpu)
