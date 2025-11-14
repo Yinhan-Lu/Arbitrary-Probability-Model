@@ -117,10 +117,11 @@ echo "Estimated Training Time:"
 echo "  ~5-7 days on A100"
 echo "========================================="
 
-# Run training
-python3 ./train_sigmagpt.py \
+# Run training using unified train.py
+python3 ./train.py \
+    --model_type sigmagpt \
     --model_config $MODEL_CONFIG \
-    --mode $MODE \
+    --sigmagpt_mode $MODE \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
     --eval_batch_size 16 \
@@ -145,6 +146,7 @@ python3 ./train_sigmagpt.py \
     --exp_name $EXP_NAME \
     --device cuda \
     --num_workers 4 \
+    --primary_dataset_only \
     --fp16
 
 EXIT_CODE=$?
