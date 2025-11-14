@@ -390,7 +390,7 @@ def parse_args():
             help="Use pad_token_id to determine valid positions (old buggy behavior)"
         )
 
-    elif args.model_type == "baseline":
+    elif args.model_type in ["baseline", "distilbert"]:
         # Baseline model specific arguments
         parser.add_argument(
             "--fp16",
