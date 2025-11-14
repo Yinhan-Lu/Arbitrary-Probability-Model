@@ -28,16 +28,12 @@ class DistilBertTrainer(BaseTrainer):
 
     def setup_model(self):
         logger.info("Setting up DistilBERT model...")
-
-        logger.info("Setting up DistilBERT model...")
-
         #Load GPT-2 tokenizer
         self.tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
-        #Ensure we have a PAD token (use EOS as PAD, like your dataset)
+        # Add PAD token if missing
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-
         # Add a MASK token if missing (needed for MLM)
         if self.tokenizer.mask_token is None:
             self.tokenizer.add_special_tokens({"mask_token": "[MASK]"})
@@ -47,11 +43,9 @@ class DistilBertTrainer(BaseTrainer):
             vocab_size=self.tokenizer.vocab_size,
             max_position_embeddings=1024,
         )
-
-        # 5) Create model
         self.model = DistilBertForMaskedLM(self.config).to(self.device)
 
-        # Mixed precision
+
         self.use_amp = getattr(self.args, "fp16", False) and self.device.type == "cuda"
         if self.use_amp:
             self.scaler = GradScaler()
@@ -70,7 +64,8 @@ class DistilBertTrainer(BaseTrainer):
         # Reuse dataset loader, but do masking in the collator
         collator = MLMDataCollator(self.tokenizer, mlm_probability=0.15)
 
-        # Use the SAME config as the model so max_seq_len / positions are consistent
+        # Use the smae confirguration as the model so that max sequence length 
+        # and positions are consistent
         self.train_loader = get_dataloader(
             config=self.config,
             split="train",
