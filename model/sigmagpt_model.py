@@ -299,10 +299,10 @@ class SigmaGPT(nn.Module):
         no_decay = set()
 
         whitelist_weight_modules = (nn.Linear,)
-        blacklist_weight_modules = (nn.LayerNorm, nn.Embedding)
+        blacklist_weight_modules = (LayerNorm, nn.Embedding)
 
         for mn, m in self.named_modules():
-            for pn, p in m.named_parameters():
+            for pn, p in m.named_parameters(recurse=False):
                 fpn = f'{mn}.{pn}' if mn else pn
 
                 if pn.endswith('bias'):
@@ -312,8 +312,13 @@ class SigmaGPT(nn.Module):
                 elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
                     no_decay.add(fpn)
 
-        # Validate
+        # Validate and filter
         param_dict = {pn: p for pn, p in self.named_parameters()}
+
+        # Filter out parameters that don't exist (due to weight tying)
+        decay = decay & param_dict.keys()
+        no_decay = no_decay & param_dict.keys()
+
         inter_params = decay & no_decay
         union_params = decay | no_decay
         assert len(inter_params) == 0, f"Parameters in both decay and no_decay: {inter_params}"
