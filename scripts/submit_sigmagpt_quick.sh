@@ -76,9 +76,10 @@ MAX_COND_BLOCKS=2
 MAX_EVAL_BLOCKS=1
 
 # Frequent logging for debugging
-LOGGING_STEPS=10
-EVAL_STEPS=50
-SAVE_STEPS=100
+# Note: Quick test only has ~7 steps, so use very small logging intervals
+LOGGING_STEPS=1       # Log every step (only 7 steps total)
+EVAL_STEPS=3          # Evaluate every 3 steps
+SAVE_STEPS=5          # Save every 5 steps
 MAX_EVAL_BATCHES=10
 
 echo "========================================="
