@@ -40,8 +40,11 @@ class DistilBertTrainer(BaseTrainer):
             self.tokenizer.add_special_tokens({"mask_token": "[MASK]"})
 
         # Build config 
+
+        vocab_size = len(self.tokenizer)
+        logger.info(f"Tokenizer vocab size: {vocab_size}")
         self.config = DistilBertConfig(
-            vocab_size=self.tokenizer.vocab_size,
+            vocab_size=vocab_size,
             max_position_embeddings=1024,
         )
         self.model = DistilBertForMaskedLM(self.config).to(self.device)
