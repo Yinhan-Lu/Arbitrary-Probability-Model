@@ -156,8 +156,13 @@ try:
         input_ids = batch['input_ids'].to(device)
 
         # Data augmentation (on CPU)
+        # Note: Must use augment_sequence (not augment_batch) to preserve conditioning/evaluation indices
         input_ids_cpu = input_ids.cpu()
-        aug_batch = augmenter.augment_batch(input_ids_cpu)
+        batch_size = input_ids_cpu.size(0)
+        aug_batch = []
+        for i in range(batch_size):
+            result = augmenter.augment_sequence(input_ids_cpu[i], device='cpu')
+            aug_batch.append(result)
 
         # Convert to Sigma GPT format
         sigmagpt_batch = adapter.convert_batch(aug_batch, input_ids_cpu)
@@ -228,8 +233,13 @@ with torch.no_grad():
     input_ids = test_batch['input_ids'][:2].to(device)  # Take 2 samples
 
     # Augment
+    # Note: Must use augment_sequence (not augment_batch) to preserve conditioning/evaluation indices
     input_ids_cpu = input_ids.cpu()
-    aug_batch = augmenter.augment_batch(input_ids_cpu)
+    batch_size = input_ids_cpu.size(0)
+    aug_batch = []
+    for i in range(batch_size):
+        result = augmenter.augment_sequence(input_ids_cpu[i], device='cpu')
+        aug_batch.append(result)
     sigmagpt_batch = adapter.convert_batch(aug_batch, input_ids_cpu)
 
     # Inference
