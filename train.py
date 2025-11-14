@@ -36,6 +36,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from train.conditional_trainer import ConditionalTrainer
 from train.baseline_trainer import BaselineTrainer
+from train.distilbert_trainer import DistilBertTrainer
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,7 +66,7 @@ def parse_args():
         "--model_type",
         type=str,
         required=True,
-        choices=["conditional", "baseline"],
+        choices=["conditional", "baseline", "distilbert"],
         help="Type of model to train: 'conditional' or 'baseline'"
     )
 
@@ -368,6 +370,9 @@ def create_trainer(args):
     elif args.model_type == "baseline":
         logger.info("Creating Baseline Trainer...")
         return BaselineTrainer(args)
+    elif args.model_type == "distilbert":
+        logger.info("Creating DistilBert Trainer...")
+        return DistilBertTrainer(args)
     else:
         raise ValueError(f"Unknown model_type: {args.model_type}")
 

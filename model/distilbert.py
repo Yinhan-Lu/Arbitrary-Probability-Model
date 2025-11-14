@@ -2,7 +2,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-#Kim
 
 class DistilBertConfig:
     def __init__(
@@ -12,7 +11,7 @@ class DistilBertConfig:
         n_layers=6,
         n_heads=12,
         hidden_dim=3072,
-        max_position_embeddings=512,
+        max_position_embeddings=1024,
         dropout=0.1,
         attention_dropout=0.1,
         layer_norm_eps=1e-5,
@@ -27,6 +26,7 @@ class DistilBertConfig:
         self.dropout = dropout
         self.attention_dropout = attention_dropout
         self.layer_norm_eps = layer_norm_eps
+        self.max_seq_len = max_position_embeddings
 
 
 class DistilMultiHeadAttention(nn.Module):
