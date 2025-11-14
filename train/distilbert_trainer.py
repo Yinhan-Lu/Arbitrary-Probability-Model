@@ -6,6 +6,7 @@ using the same pipeline infrastructure as the autoregressive baseline.
 """
 
 import sys
+import math
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -46,6 +47,7 @@ class DistilBertTrainer(BaseTrainer):
         self.model = DistilBertForMaskedLM(self.config).to(self.device)
 
 
+        #to make it run faster
         self.use_amp = getattr(self.args, "fp16", False) and self.device.type == "cuda"
         if self.use_amp:
             self.scaler = GradScaler()
@@ -140,3 +142,44 @@ class DistilBertTrainer(BaseTrainer):
         logger.info(f"Validation loss {avg_loss:.4f} | PPL {perplexity:.2f}")
         self.model.train()
         return {"loss": avg_loss, "perplexity": perplexity}
+
+
+    def get_csv_header(self):
+        return ["step", "epoch","split","loss", "perplexity","learning_rate","grad_norm", "tokens_per_second",
+            "time_elapsed_seconds"]
+
+    def format_train_metrics(self,step=None,epoch=None, loss=None,learning_rate=None,grad_norm=None, tokens_per_second=None, time_elapsed_seconds=None,**extra,):
+        row = {
+            "step": step,
+            "epoch": epoch,
+            "split": "train",
+            "loss": float(loss) if loss is not None else None,
+            "perplexity": math.exp(float(loss)) if loss is not None else None,
+            "learning_rate": learning_rate,
+            "grad_norm": grad_norm,
+            "tokens_per_second": tokens_per_second,
+            "time_elapsed_seconds": time_elapsed_seconds,
+        }
+        # Add any extra fields passed by BaseTrainer
+        row.update(extra)
+        return row
+
+    def format_eval_metrics(self,step=None,epoch=None,metrics=None,**extra):
+        metrics = metrics or {}
+        loss = metrics.get("loss")
+        perplexity = metrics.get("perplexity")
+
+        row = {
+            "step": step,
+            "epoch": epoch,
+            "split": "val",
+            "loss": float(loss) if loss is not None else None,
+            "perplexity": float(perplexity) if perplexity is not None else None,
+            "learning_rate": None,
+            "grad_norm": None,
+            "tokens_per_second": None,
+            "time_elapsed_seconds": None,
+        }
+        row.update(extra)
+        return row
+

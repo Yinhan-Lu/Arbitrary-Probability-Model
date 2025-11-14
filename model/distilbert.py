@@ -169,3 +169,9 @@ class DistilBertForMaskedLM(nn.Module):
             )
 
         return logits, loss
+    
+    def get_num_params(self, only_trainable: bool = True):
+        if only_trainable:
+            return sum(p.numel() for p in self.parameters() if p.requires_grad)
+        else:
+            return sum(p.numel() for p in self.parameters())
