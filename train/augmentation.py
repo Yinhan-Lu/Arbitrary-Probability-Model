@@ -209,7 +209,7 @@ class ConditionalAugmenter:
 
         # Infer valid_positions if not provided (filter out padding tokens)
         if valid_positions is None:
-            padding_token_id = self.tokenizer.pad_token_id
+            padding_token_id = self.tokenizer_pad_token_id
             if padding_token_id is None:
                 padding_token_id = 50256  # GPT-2 default
             valid_positions = [i for i in range(seq_len) if input_ids[i] != padding_token_id]
