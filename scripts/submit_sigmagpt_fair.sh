@@ -161,18 +161,67 @@ echo "========================================="
 if [ $EXIT_CODE -eq 0 ]; then
     echo "✓ Sigma GPT Fair mode training completed!"
     echo ""
+
+    # Find the most recent experiment directory
+    LATEST_EXP=$(ls -dt $OUTPUT_DIR/${EXP_NAME}_* 2>/dev/null | head -1)
+
     echo "Training Statistics:"
     echo "  Mode: Fair (~40% learning efficiency)"
     echo "  Expected ~195K steps completed"
     echo "  Model: DistilGPT-2 (82M params)"
     echo "  Effective batch size: 512"
     echo ""
-    echo "Results: $OUTPUT_DIR/$EXP_NAME*"
+    echo "Results:"
+    echo "  Experiment directory: $LATEST_EXP"
+    echo "  Checkpoints: $LATEST_EXP/checkpoints/"
+    echo "  Logs: $LATEST_EXP/logs/"
+    echo "  CSV Metrics: $LATEST_EXP/logs/metrics.csv"
+    echo ""
+
+    # Auto-generate visualization plots
+    if [ -n "$LATEST_EXP" ] && [ -d "$LATEST_EXP" ]; then
+        echo "========================================="
+        echo "AUTO-GENERATING VISUALIZATION PLOTS"
+        echo "========================================="
+
+        # Generate detailed individual plots (PRIORITY)
+        echo "Generating individual metric plots..."
+        python3 utils/plot_individual_metrics.py "$LATEST_EXP"
+        PLOT_EXIT_CODE=$?
+
+        if [ $PLOT_EXIT_CODE -eq 0 ]; then
+            echo "✓ Individual plots generated successfully!"
+            echo "  Location: $LATEST_EXP/plots_individual/"
+            echo "  Files: train_loss.png, train_perplexity.png, learning_rate.png, etc."
+        else
+            echo "⚠ Warning: Failed to generate individual plots (exit code: $PLOT_EXIT_CODE)"
+        fi
+
+        # Generate comprehensive visualization dashboard
+        echo ""
+        echo "Generating comprehensive dashboard..."
+        python3 utils/quickstart_visualization.py "$LATEST_EXP"
+        DASH_EXIT_CODE=$?
+
+        if [ $DASH_EXIT_CODE -eq 0 ]; then
+            echo "✓ Dashboard generated successfully!"
+            echo "  Location: $LATEST_EXP/plots/"
+        else
+            echo "⚠ Warning: Failed to generate dashboard (exit code: $DASH_EXIT_CODE)"
+        fi
+
+        echo "========================================="
+        echo ""
+    fi
+
+    echo "Visualization results:"
+    echo "  📊 Individual plots: $LATEST_EXP/plots_individual/"
+    echo "  📈 Dashboard: $LATEST_EXP/plots/"
     echo ""
     echo "Next Steps:"
-    echo "  1. Evaluate model on test set"
-    echo "  2. Compare with existing conditional model"
-    echo "  3. Optionally train full mode for comparison"
+    echo "  1. Review individual metric plots (especially train/eval loss curves)"
+    echo "  2. Evaluate model on test set"
+    echo "  3. Compare with full mode: python3 utils/quickstart_visualization.py $LATEST_EXP {full_mode_exp} --compare"
 else
     echo "✗ Training failed"
     echo "Check logs: logs/slurm_${SLURM_JOB_ID}.err"
