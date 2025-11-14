@@ -323,7 +323,7 @@ def parse_args():
             help="Maximum conditioning percentage for Mode 2 boundary evaluation"
         )
 
-    elif args.model_type == "baseline":
+    elif args.model_type in ["baseline", "distilbert"]:
         # Baseline model specific arguments
         parser.add_argument(
             "--fp16",
