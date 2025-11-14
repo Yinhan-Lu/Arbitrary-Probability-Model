@@ -237,6 +237,11 @@ class SigmaGPT(nn.Module):
         # Concatenate to (B, T, 2)
         order_cat = torch.cat((order_input, order_target), dim=2)
 
+        # Clamp order values to valid position embedding range [0, max_seq_len-1]
+        # Order tensor uses seq_len as "end-of-sequence" marker, but embedding table
+        # only has indices [0, max_seq_len-1], so we need to clamp
+        order_cat = order_cat.clamp(max=self.config.max_seq_len - 1)
+
         # Embed: (B, T, 2) -> (B, T, 2, n_embd/2)
         pos_emb = self.transformer["wpe"](order_cat)
 

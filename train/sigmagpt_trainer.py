@@ -93,14 +93,15 @@ class SigmaGPTTrainer(BaseTrainer):
         """
         logger.info("Setting up data components...")
 
-        # Calculate body sequence length (same as conditional model)
-        self.body_seq_len = self.config.max_seq_len - 1  # Reserve 1 for BOS in augmenter
+        # Sigma GPT uses full sequence length (no BOS token needed in augmenter)
+        # Unlike conditional model, we don't need to reserve space for BOS
+        # because Sigma GPT doesn't use the augmented sequence format
 
         # Create ConditionalAugmenter with distribution functions
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.tokenizer.eos_token_id,  # Dummy (not actually used by Sigma GPT)
             bos_token_id=self.tokenizer.eos_token_id,    # BOS token for augmenter
-            max_seq_len=self.body_seq_len,
+            max_seq_len=self.config.max_seq_len,  # Use full sequence length
             tokenizer_pad_token_id=self.tokenizer.pad_token_id,
             num_conditioning_distribution=uniform_num_conditioning_distribution,
             num_blocks_distribution=uniform_num_blocks_distribution,
