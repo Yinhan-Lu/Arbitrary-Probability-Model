@@ -8,11 +8,11 @@ class MLMDataCollator:
         self.mask_token_id = tokenizer.mask_token_id
         self.pad_token_id = tokenizer.pad_token_id
 
-        # NEW: handle tokenizers that may not have CLS/SEP (e.g., GPT-2)
+        # Handle tokenizers that may not have CLS/SEP (e.g., GPT-2)
         self.cls_token_id = getattr(tokenizer, "cls_token_id", None)
         self.sep_token_id = getattr(tokenizer, "sep_token_id", None)
 
-        # Optional safety: make sure we actually have a [MASK] token
+        # to make  sure we actually have a [MASK] token
         if self.mask_token_id is None:
             raise ValueError(
                 "Tokenizer has no mask_token_id. "
@@ -44,9 +44,10 @@ class MLMDataCollator:
         probability_matrix.masked_fill_(special_mask, 0.0)
 
         masked_indices = torch.bernoulli(probability_matrix).bool()
-        labels[~masked_indices] = -100  # we only predict masked positions
+        #Predict maskes predictions
+        labels[~masked_indices] = -100
 
-        # 80% [MASK]
+        # 80% mask token
         indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
         batch[indices_replaced] = self.mask_token_id
 
