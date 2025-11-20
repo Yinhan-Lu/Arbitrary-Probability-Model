@@ -148,33 +148,45 @@ class DistilBertTrainer(BaseTrainer):
 
 
     def get_csv_header(self):
-        return ["step", "epoch","split","loss", "perplexity","learning_rate","grad_norm", "tokens_per_second",
-            "time_elapsed_seconds"]
+        # step/epoch will be filled in by BaseTrainer
+        return [
+            "step", "epoch", "split",
+            "loss", "perplexity",
+            "learning_rate", "grad_norm",
+            "tokens_per_second", "time_elapsed_seconds",
+        ]
 
-    def format_train_metrics(self,step=None,epoch=None, loss=None,learning_rate=None,grad_norm=None, tokens_per_second=None, time_elapsed_seconds=None,**extra,):
+    def format_train_metrics(self, avg_loss, perplexity, lr, **extra):
+        """
+        Called by BaseTrainer as: format_train_metrics(avg_loss, perplexity, lr)
+
+        avg_loss: *real* MLM loss (already averaged over logging window)
+        perplexity: exp(avg_loss)
+        lr: learning rate
+        """
         row = {
-            "step": step,
-            "epoch": epoch,
             "split": "train",
-            "loss": float(loss) if loss is not None else None,
-            "perplexity": math.exp(float(loss)) if loss is not None else None,
-            "learning_rate": learning_rate,
-            "grad_norm": grad_norm,
-            "tokens_per_second": tokens_per_second,
-            "time_elapsed_seconds": time_elapsed_seconds,
+            "loss": float(avg_loss),
+            "perplexity": float(perplexity),
+            "learning_rate": float(lr),
+            "grad_norm": extra.get("grad_norm"),
+            "tokens_per_second": extra.get("tokens_per_second"),
+            "time_elapsed_seconds": extra.get("time_elapsed_seconds"),
         }
-        # Add any extra fields passed by BaseTrainer
         row.update(extra)
         return row
 
-    def format_eval_metrics(self,step=None,epoch=None,metrics=None,**extra):
-        metrics = metrics or {}
-        loss = metrics.get("loss")
-        perplexity = metrics.get("perplexity")
+    def format_eval_metrics(self, eval_results, **extra):
+        """
+        Called by BaseTrainer as: format_eval_metrics(eval_results)
+
+        eval_results is whatever `evaluate()` returns, i.e.:
+        {"loss": avg_loss, "perplexity": perplexity}
+        """
+        loss = eval_results.get("loss")
+        perplexity = eval_results.get("perplexity")
 
         row = {
-            "step": step,
-            "epoch": epoch,
             "split": "val",
             "loss": float(loss) if loss is not None else None,
             "perplexity": float(perplexity) if perplexity is not None else None,
@@ -185,4 +197,3 @@ class DistilBertTrainer(BaseTrainer):
         }
         row.update(extra)
         return row
-
