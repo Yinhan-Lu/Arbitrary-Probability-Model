@@ -21,7 +21,7 @@ class MLMDataCollator:
 
     def __call__(self, batch_examples):
         # batch_examples: list of dicts with "input_ids"
-        input_ids = [torch.tensor(ex["input_ids"], dtype=torch.long) for ex in batch_examples]
+        input_ids = [ex["input_ids"].clone().detach() for ex in batch_examples]
         batch = torch.nn.utils.rnn.pad_sequence(
             input_ids,
             batch_first=True,

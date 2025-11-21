@@ -1,8 +1,13 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
-exp_dir = "experiments/distilbert_medium_run_20251114_135003"
+exp_dir = "experiments/distilbert_full_training_20251120_171222"
 csv_path = f"{exp_dir}/logs/metrics.csv"
+
+# Create plots directory if it doesn't exist
+plots_dir = Path(exp_dir) / "plots"
+plots_dir.mkdir(exist_ok=True)
 
 df = pd.read_csv(csv_path)
 
