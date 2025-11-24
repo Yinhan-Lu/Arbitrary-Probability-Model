@@ -4,7 +4,7 @@ Quick reference for common utility commands. Run all commands from **project roo
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Before Training
 ```bash
@@ -96,7 +96,7 @@ python utils/quickstart_visualization.py --all --base-dir custom_experiments
 
 ---
 
-## 🔧 Development Workflow
+## Development Workflow
 
 ### Pre-Commit Checks
 ```bash
@@ -136,7 +136,27 @@ python train_distilgpt2.py \
     --output_dir experiments \
     --exp_name debug_run \
     --device cuda
+
+#Mini training run DistilBert (local)
+python train.py \
+  --model_type distilbert \
+  --model_config distilbert-base-uncased \
+  --dataset_name wikitext \
+  --dataset_config wikitext-103-v1 \
+  --num_epochs 1 \
+  --num_train_samples 300 \
+  --num_eval_samples 100 \
+  --batch_size 2 \
+  --eval_batch_size 32 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 5e-4 \
+  --logging_steps 50 \
+  --eval_steps 200 \
+  --do_eval \
+  --output_dir ./experiments \
+  --exp_name distilbert_check
 ```
+
 
 ---
 
