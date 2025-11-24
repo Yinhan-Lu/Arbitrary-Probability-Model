@@ -182,3 +182,5 @@ experiments/
 sigma-gpt/
 *_old.py
 result_of_two_pipeline/
+Updates-*.md
+Updates-*.docx
