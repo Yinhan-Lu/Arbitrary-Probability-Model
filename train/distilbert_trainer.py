@@ -6,9 +6,10 @@ using the same pipeline infrastructure as the autoregressive baseline.
 """
 
 import sys
-import math
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from train.bert_evaluation_modes import evaluate_bert_all_modes
+
 
 import torch
 import logging
@@ -69,8 +70,6 @@ class DistilBertTrainer(BaseTrainer):
         # Reuse dataset loader, but do masking in the collator
         collator = MLMDataCollator(self.tokenizer, mlm_probability=0.15)
 
-        # Use the smae confirguration as the model so that max sequence length 
-        # and positions are consistent
         self.train_loader = get_dataloader(
             config=self.config,
             split="train",
@@ -93,6 +92,42 @@ class DistilBertTrainer(BaseTrainer):
             )
         else:
             self.val_loader = None
+
+        from train.blockwise_sampling import (
+            uniform_num_conditioning_distribution,
+            uniform_num_blocks_distribution,
+            uniform_block_sizes_distribution,
+            uniform_num_evaluation_distribution,
+            generate_conditioning_evaluation_sets_blockwise
+        )
+
+        class SimpleAugmenter:
+            def __init__(self, cond_pct_min, cond_pct_max):
+                self.cond_pct_min = cond_pct_min
+                self.cond_pct_max = cond_pct_max
+
+            def split_indices(self, seq_len, valid_positions=None):
+                return generate_conditioning_evaluation_sets_blockwise(
+                    seq_len=seq_len,
+                    num_conditioning_distribution=lambda l: uniform_num_conditioning_distribution(
+                        l, (self.cond_pct_min, self.cond_pct_max)
+                    ),
+                    num_blocks_distribution=uniform_num_blocks_distribution,
+                    block_sizes_distribution=uniform_block_sizes_distribution,
+                    num_evaluation_distribution=lambda l: uniform_num_evaluation_distribution(
+                        l, (self.cond_pct_min, self.cond_pct_max)
+                    ),
+                    num_eval_blocks_distribution=uniform_num_blocks_distribution,
+                    eval_block_sizes_distribution=uniform_block_sizes_distribution,
+                    valid_positions=valid_positions,
+                )
+
+        self.augmenter = SimpleAugmenter(
+            cond_pct_min=self.args.cond_pct_min,
+            cond_pct_max=self.args.cond_pct_max,
+        )
+
+
 
     def train_step(self, batch):
         input_ids = batch["input_ids"].to(self.device)
@@ -119,42 +154,49 @@ class DistilBertTrainer(BaseTrainer):
 
     @torch.no_grad()
     def evaluate(self):
-        self.model.eval()
-        total_loss, num_batches = 0.0, 0
-        logger.info("Running MLM evaluation...")
+        """
+        Run BERT-style multi-mode evaluation (Modes 1, 2, 3).
 
-        for batch in self.val_loader:
-            input_ids = batch["input_ids"].to(self.device)
-            attention_mask = batch["attention_mask"].to(self.device)
-            labels = batch["labels"].to(self.device)
+        We still expose `loss` and `perplexity` (using Mode 1)
+        so BaseTrainer and any generic code keep working.
+        """
 
-            _, loss = self.model(
-                input_ids,
-                attention_mask=attention_mask,
-                labels=labels,
-            )
-            total_loss += loss.item()
-            num_batches += 1
+        logger.info("Running BERT multi-mode evaluation (Modes 1, 2, 3)...")
 
-            if self.args.max_eval_batches > 0 and num_batches >= self.args.max_eval_batches:
-                break
+        metrics = evaluate_bert_all_modes(
+            model=self.model,
+            dataloader=self.val_loader,
+            device=self.device,
+            tokenizer=self.tokenizer,
+            augmenter=self.augmenter,         
+            max_batches=self.args.max_eval_batches,
+            trainer_args=self.args,
+        )
 
-        avg_loss = total_loss / max(1, num_batches)
-        perplexity = torch.exp(torch.tensor(avg_loss)).item()
+        # Mode 1 is the “main” loss (for BaseTrainer)
+        metrics["loss"] = metrics["mode1_loss"]
+        metrics["perplexity"] = metrics["mode1_ppl"]
 
-        logger.info(f"Validation loss {avg_loss:.4f} | PPL {perplexity:.2f}")
-        self.model.train()
-        return {"loss": avg_loss, "perplexity": perplexity}
+        logger.info(f"Mode 1 (MLM baseline): loss={metrics['mode1_loss']:.4f}, ppl={metrics['mode1_ppl']:.2f}")
+        logger.info(f"Mode 2 (Boundary):      loss={metrics['mode2_loss']:.4f}, ppl={metrics['mode2_ppl']:.2f}")
+        logger.info(f"Mode 3 (Train dist):    loss={metrics['mode3_loss']:.4f}, ppl={metrics['mode3_ppl']:.2f}")
+
+        return metrics
 
 
     def get_csv_header(self):
-        # step/epoch will be filled in by BaseTrainer
         return [
             "step", "epoch", "split",
+            # generic
             "loss", "perplexity",
             "learning_rate", "grad_norm",
             "tokens_per_second", "time_elapsed_seconds",
+            # BERT-mode-specific metrics
+            "mode1_loss", "mode1_ppl",
+            "mode2_loss", "mode2_ppl",
+            "mode3_loss", "mode3_ppl",
         ]
+
 
     def format_train_metrics(self, avg_loss, perplexity, lr, **extra):
         """
@@ -180,8 +222,11 @@ class DistilBertTrainer(BaseTrainer):
         """
         Called by BaseTrainer as: format_eval_metrics(eval_results)
 
-        eval_results is whatever `evaluate()` returns, i.e.:
-        {"loss": avg_loss, "perplexity": perplexity}
+        eval_results is whatever `evaluate()` returns, including:
+        - loss, perplexity
+        - mode1_loss, mode1_ppl
+        - mode2_loss, mode2_ppl
+        - mode3_loss, mode3_ppl
         """
         loss = eval_results.get("loss")
         perplexity = eval_results.get("perplexity")
@@ -190,10 +235,21 @@ class DistilBertTrainer(BaseTrainer):
             "split": "val",
             "loss": float(loss) if loss is not None else None,
             "perplexity": float(perplexity) if perplexity is not None else None,
-            "learning_rate": None,
+            "learning_rate": self.optimizer.param_groups[0]["lr"]
+                              if hasattr(self, "optimizer") else None,
             "grad_norm": None,
             "tokens_per_second": None,
             "time_elapsed_seconds": None,
+
+            # mode-specific (important for plotting!)
+            "mode1_loss": eval_results.get("mode1_loss"),
+            "mode1_ppl": eval_results.get("mode1_ppl"),
+            "mode2_loss": eval_results.get("mode2_loss"),
+            "mode2_ppl": eval_results.get("mode2_ppl"),
+            "mode3_loss": eval_results.get("mode3_loss"),
+            "mode3_ppl": eval_results.get("mode3_ppl"),
         }
+
         row.update(extra)
         return row
+
