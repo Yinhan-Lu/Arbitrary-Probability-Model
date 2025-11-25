@@ -347,6 +347,18 @@ def parse_args():
             default="20220301.en",
             help="Dataset configuration"
         )
+        parser.add_argument(
+            "--cond_pct_min",
+            type=float,
+            default=0.2,
+            help="Minimum percentage of conditioning tokens for BERT evaluation mode 3"
+        )
+        parser.add_argument(
+            "--cond_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum percentage of conditioning tokens for BERT evaluation mode 3"
+        )
 
     # Parse all arguments
     args = parser.parse_args()
