@@ -184,3 +184,12 @@ sigma-gpt/
 result_of_two_pipeline/
 Updates-*.md
 Updates-*.docx
+
+# Test experiments
+test_exp/
+
+# Archive folder
+archive/
+
+# Plots (visualization outputs)
+plots/
