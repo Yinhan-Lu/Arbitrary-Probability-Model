@@ -152,6 +152,15 @@ def parse_args():
     parser.add_argument("--max_eval_blocks", type=int, default=1,
                        help="Maximum number of evaluation blocks")
 
+    # NEW: Eric's two training methods
+    parser.add_argument("--ordering_mode", type=str, default="temporal",
+                       choices=["temporal", "random_scramble"],
+                       help="Ordering mode: 'temporal' (Method 1) or 'random_scramble' (Method 2)")
+
+    # ========== Evaluation Configuration ==========
+    parser.add_argument("--eval_splits_file", type=str, default=None,
+                       help="Pre-generated evaluation splits file for deterministic evaluation")
+
     # ========== Logging & Checkpointing ==========
     parser.add_argument("--output_dir", type=str, default="./experiments",
                        help="Output directory for checkpoints and logs")
@@ -478,9 +487,15 @@ def main():
         evaluation_sampling=args.evaluation_sampling,
         max_cond_blocks=args.max_cond_blocks,
         max_eval_blocks=args.max_eval_blocks,
-        tokenizer_pad_token_id=tokenizer.pad_token_id
+        tokenizer_pad_token_id=tokenizer.pad_token_id,
+        ordering_mode=args.ordering_mode  # NEW: Eric's two methods
     )
-    logger.info(f"Augmenter initialized (conditioning: {args.conditioning_sampling}, evaluation: {args.evaluation_sampling})")
+    logger.info(f"Augmenter initialized (conditioning: {args.conditioning_sampling}, evaluation: {args.evaluation_sampling}, ordering: {args.ordering_mode})")
+
+    # NEW: Set eval splits file if provided
+    if args.eval_splits_file:
+        augmenter.eval_splits_file = args.eval_splits_file
+        logger.info(f"Using deterministic evaluation splits from: {args.eval_splits_file}")
 
     # Initialize adapter
     adapter = SigmaGPTDataAdapter(mode=args.mode)
