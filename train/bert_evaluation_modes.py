@@ -187,7 +187,11 @@ def evaluate_bert_mode2_boundary_filling(model, dataloader, device, tokenizer, m
                     continue
                 
                 # Sort eval_idx for left-to-right unmasking
+                MAX_EVAL_TOKENS = 32
                 eval_idx_sorted = sorted(eval_idx)
+                if len(eval_idx_sorted) > MAX_EVAL_TOKENS:
+                    eval_idx_sorted = eval_idx_sorted[:MAX_EVAL_TOKENS]
+
                 
                 # Save ground truth for evaluation tokens
                 ground_truth = sample_input_ids[0, eval_idx_sorted].clone()
@@ -298,7 +302,10 @@ def evaluate_bert_mode3_training_dist(model, dataloader, device, tokenizer, augm
                     continue
                 
                 # Sort eval_idx for left-to-right unmasking
+                MAX_EVAL_TOKENS = 32
                 eval_idx_sorted = sorted(eval_idx)
+                if len(eval_idx_sorted) > MAX_EVAL_TOKENS:
+                    eval_idx_sorted = eval_idx_sorted[:MAX_EVAL_TOKENS]
                 
                 # Save ground truth
                 ground_truth = sample_input_ids[0, eval_idx_sorted].clone()
