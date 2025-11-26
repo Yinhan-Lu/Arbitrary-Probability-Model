@@ -66,17 +66,34 @@ echo "=========================================="
 echo "Verification: Testing imports"
 echo "=========================================="
 python -c "
-import torch
-import transformers
-import datasets
-import matplotlib
-import numpy
-import pandas
-print('✓ All critical packages imported successfully')
-print(f'PyTorch version: {torch.__version__}')
-print(f'CUDA available: {torch.cuda.is_available()}')
-print(f'Transformers version: {transformers.__version__}')
-print(f'Datasets version: {datasets.__version__}')
+import sys
+
+# Test non-PyTorch packages first
+try:
+    import transformers
+    import datasets
+    import matplotlib
+    import numpy
+    import pandas
+    print('✓ Core packages imported successfully')
+    print(f'Transformers version: {transformers.__version__}')
+    print(f'Datasets version: {datasets.__version__}')
+except Exception as e:
+    print(f'✗ Error importing packages: {e}')
+    sys.exit(1)
+
+# Test PyTorch (may fail on login node without CUDA)
+try:
+    import torch
+    print(f'✓ PyTorch version: {torch.__version__}')
+    print(f'  CUDA available: {torch.cuda.is_available()}')
+except ImportError as e:
+    if 'libnvJitLink' in str(e) or 'CUDA' in str(e):
+        print('⚠ PyTorch installed but CUDA not available (normal on login node)')
+        print('  Run on GPU compute node to test CUDA: sbatch scripts/test_env_gpu.sh')
+    else:
+        print(f'✗ Error importing PyTorch: {e}')
+        sys.exit(1)
 "
 
 echo ""
@@ -87,6 +104,6 @@ echo ""
 echo "To use this environment:"
 echo "  conda activate arbprob"
 echo ""
-echo "To verify CUDA on compute node:"
-echo "  python -c 'import torch; print(torch.cuda.is_available())'"
+echo "To verify CUDA on GPU compute node:"
+echo "  sbatch scripts/test_env_gpu.sh"
 echo ""
