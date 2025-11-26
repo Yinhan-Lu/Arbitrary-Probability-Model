@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from train.conditional_trainer import ConditionalTrainer
 from train.baseline_trainer import BaselineTrainer
+from train.sigmagpt_trainer import SigmaGPTTrainer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,8 +97,8 @@ def parse_args():
         "--model_type",
         type=str,
         required=True,
-        choices=["conditional", "baseline"],
-        help="Type of model to train: 'conditional' or 'baseline'"
+        choices=["conditional", "baseline", "sigmagpt"],
+        help="Type of model to train: 'conditional', 'baseline', or 'sigmagpt'"
     )
 
     # ========== Common Arguments (Shared by All Models) ==========
@@ -393,6 +394,102 @@ def parse_args():
             help="Dataset configuration"
         )
 
+    elif args.model_type == "sigmagpt":
+        # Sigma GPT specific arguments
+        parser.add_argument(
+            "--sigmagpt_mode",
+            type=str,
+            default="fair",
+            choices=["fair", "full"],
+            help="Sigma GPT training mode: 'fair' (~40%% learning) or 'full' (100%% learning)"
+        )
+        parser.add_argument(
+            "--ordering_mode",
+            type=str,
+            default="temporal",
+            choices=["temporal", "random_scramble"],
+            help="Ordering mode for Sigma GPT: 'temporal' or 'random_scramble'"
+        )
+        parser.add_argument(
+            "--conditioning_sampling",
+            type=str,
+            default="blockwise",
+            choices=["random", "blockwise"],
+            help="Conditioning sampling strategy"
+        )
+        parser.add_argument(
+            "--evaluation_sampling",
+            type=str,
+            default="blockwise",
+            choices=["random", "blockwise"],
+            help="Evaluation sampling strategy"
+        )
+        parser.add_argument(
+            "--max_cond_blocks",
+            type=int,
+            default=3,
+            help="Maximum number of conditioning blocks"
+        )
+        parser.add_argument(
+            "--max_eval_blocks",
+            type=int,
+            default=2,
+            help="Maximum number of evaluation blocks"
+        )
+        # Distribution parameters (must match training config for fair comparison)
+        parser.add_argument(
+            "--cond_pct_min",
+            type=float,
+            default=0.0,
+            help="Minimum conditioning percentage (default: 0.0 = 0%%)"
+        )
+        parser.add_argument(
+            "--cond_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum conditioning percentage (default: 0.4 = 40%%)"
+        )
+        parser.add_argument(
+            "--eval_pct_min",
+            type=float,
+            default=1.0,
+            help="Minimum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        parser.add_argument(
+            "--eval_pct_max",
+            type=float,
+            default=1.0,
+            help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        parser.add_argument(
+            "--streaming",
+            action="store_true",
+            help="Use streaming dataset"
+        )
+        parser.add_argument(
+            "--dataset_name",
+            type=str,
+            default="wikitext",
+            help="Dataset name"
+        )
+        parser.add_argument(
+            "--dataset_config",
+            type=str,
+            default="wikitext-103-raw-v1",
+            help="Dataset configuration"
+        )
+        parser.add_argument(
+            "--primary_dataset_only",
+            action="store_true",
+            default=True,
+            help="Use only primary dataset (no secondary augmentation)"
+        )
+        parser.add_argument(
+            "--fp16",
+            action="store_true",
+            help="Use mixed precision training (FP16)"
+        )
+
     # Parse all arguments
     args = parser.parse_args()
 
@@ -407,7 +504,7 @@ def create_trainer(args):
         args: Parsed command-line arguments
 
     Returns:
-        trainer: ConditionalTrainer or BaselineTrainer instance
+        trainer: ConditionalTrainer, BaselineTrainer, or SigmaGPTTrainer instance
     """
     if args.model_type == "conditional":
         logger.info("Creating Conditional Trainer...")
@@ -415,6 +512,9 @@ def create_trainer(args):
     elif args.model_type == "baseline":
         logger.info("Creating Baseline Trainer...")
         return BaselineTrainer(args)
+    elif args.model_type == "sigmagpt":
+        logger.info("Creating Sigma GPT Trainer...")
+        return SigmaGPTTrainer(args)
     else:
         raise ValueError(f"Unknown model_type: {args.model_type}")
 

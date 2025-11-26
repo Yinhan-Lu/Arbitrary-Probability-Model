@@ -63,6 +63,8 @@ class ConditionalAugmenter:
         evaluation_sampling='blockwise',
         max_cond_blocks=3,
         max_eval_blocks=2,
+        # NEW: Ordering mode for Sigma GPT (Eric's two methods)
+        ordering_mode='temporal',
     ):
         """
         Initialize augmenter with distribution-based sampling
@@ -130,6 +132,10 @@ class ConditionalAugmenter:
         self.max_cond_blocks = max_cond_blocks
         self.max_eval_blocks = max_eval_blocks
 
+        # NEW: Store ordering mode and convert to enum
+        from train.ordering_modes import get_ordering_mode
+        self.ordering_mode = get_ordering_mode(ordering_mode)
+
         logger.info(f"ConditionalAugmenter initialized:")
         logger.info(f"  Mask token ID: {mask_token_id}")
         logger.info(f"  BOS token ID: {bos_token_id}")
@@ -140,12 +146,14 @@ class ConditionalAugmenter:
         logger.info(f"  Mode: Distribution-based sampling")
         logger.info(f"  Conditioning sampling: {conditioning_sampling}")
         logger.info(f"  Evaluation sampling: {evaluation_sampling}")
+        logger.info(f"  Ordering mode: {self.ordering_mode.value}")
 
     def split_indices(self, seq_len, valid_positions=None):
         """
         Split sequence indices into conditioning, evaluation, and unknown sets
 
         Uses distribution-based blockwise sampling for both conditioning and evaluation sets.
+        Applies ordering mode to reorder indices within each set.
 
         Args:
             seq_len: Length of original sequence (without BOS)
@@ -158,7 +166,7 @@ class ConditionalAugmenter:
         """
         # Only support distribution-based blockwise sampling
         if self.conditioning_sampling == 'blockwise' and self.evaluation_sampling == 'blockwise':
-            return generate_conditioning_evaluation_sets_blockwise(
+            cond_idx, eval_idx, unknown_idx = generate_conditioning_evaluation_sets_blockwise(
                 seq_len=seq_len,
                 num_conditioning_distribution=self.num_conditioning_distribution,
                 num_blocks_distribution=self.num_blocks_distribution,
@@ -168,6 +176,12 @@ class ConditionalAugmenter:
                 eval_block_sizes_distribution=self.eval_block_sizes_distribution,
                 valid_positions=valid_positions,
             )
+
+            # NEW: Apply ordering mode (Eric's two methods)
+            from train.ordering_modes import apply_ordering_mode
+            cond_idx, eval_idx = apply_ordering_mode(cond_idx, eval_idx, self.ordering_mode)
+
+            return cond_idx, eval_idx, unknown_idx
         else:
             raise ValueError(
                 f"Only blockwise sampling is supported. "
@@ -209,7 +223,7 @@ class ConditionalAugmenter:
 
         # Infer valid_positions if not provided (filter out padding tokens)
         if valid_positions is None:
-            padding_token_id = self.tokenizer.pad_token_id
+            padding_token_id = self.tokenizer_pad_token_id
             if padding_token_id is None:
                 padding_token_id = 50256  # GPT-2 default
             valid_positions = [i for i in range(seq_len) if input_ids[i] != padding_token_id]
