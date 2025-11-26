@@ -117,12 +117,46 @@ echo "Exit code: $EXIT_CODE"
 echo "Duration: $SECONDS seconds (~$((SECONDS / 60)) minutes)"
 echo "========================================="
 
-# Auto-generate visualization
+# Auto-generate visualization plots
 if [ $EXIT_CODE -eq 0 ]; then
     LATEST_EXP=$(ls -dt ./experiments/${EXP_NAME}_* 2>/dev/null | head -1)
-    if [ -n "$LATEST_EXP" ]; then
-        echo "Generating visualization..."
-        python3 utils/quickstart_visualization.py "$LATEST_EXP" || true
+    if [ -n "$LATEST_EXP" ] && [ -d "$LATEST_EXP" ]; then
+        echo "========================================="
+        echo "AUTO-GENERATING VISUALIZATION PLOTS"
+        echo "========================================="
+
+        # Generate detailed individual plots
+        echo "Generating individual metric plots..."
+        python3 utils/plot_individual_metrics.py "$LATEST_EXP"
+        PLOT_EXIT_CODE=$?
+
+        if [ $PLOT_EXIT_CODE -eq 0 ]; then
+            echo "✓ Individual plots generated successfully!"
+            echo "  Location: $LATEST_EXP/plots_individual/"
+        else
+            echo "⚠ Warning: Failed to generate individual plots (exit code: $PLOT_EXIT_CODE)"
+        fi
+
+        # Generate comprehensive visualization dashboard
+        echo ""
+        echo "Generating comprehensive dashboard..."
+        python3 utils/quickstart_visualization.py "$LATEST_EXP"
+        DASH_EXIT_CODE=$?
+
+        if [ $DASH_EXIT_CODE -eq 0 ]; then
+            echo "✓ Dashboard generated successfully!"
+            echo "  Location: $LATEST_EXP/plots/"
+        else
+            echo "⚠ Warning: Failed to generate dashboard (exit code: $DASH_EXIT_CODE)"
+        fi
+
+        echo "========================================="
+        echo ""
+        echo "Results:"
+        echo "  Experiment directory: $LATEST_EXP"
+        echo "  Individual plots: $LATEST_EXP/plots_individual/"
+        echo "  Dashboard: $LATEST_EXP/plots/"
+        echo "  CSV Metrics: $LATEST_EXP/logs/metrics.csv"
     fi
 fi
 
