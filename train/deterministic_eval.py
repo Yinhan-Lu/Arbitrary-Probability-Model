@@ -171,7 +171,6 @@ def generate_evaluation_splits(
         print(f"Augmenter configuration:")
         print(f"  - conditioning_sampling: {augmenter.conditioning_sampling}")
         print(f"  - evaluation_sampling: {augmenter.evaluation_sampling}")
-        print(f"  - conditioning_ratio: {augmenter.conditioning_ratio}")
         print(f"  - max_cond_blocks: {augmenter.max_cond_blocks}")
         print(f"  - max_eval_blocks: {augmenter.max_eval_blocks}")
 
@@ -184,6 +183,7 @@ def generate_evaluation_splits(
     else:
         iterator = range(num_samples)
 
+    skipped = 0
     for idx in iterator:
         # Get sample
         sample = dataset[idx]
@@ -201,8 +201,18 @@ def generate_evaluation_splits(
         else:
             seq_len = len(sample)
 
+        # Skip samples that are too short (need at least 10 tokens)
+        if seq_len < 10:
+            skipped += 1
+            continue
+
         # Generate split
-        cond_idx, eval_idx, unseen_idx = augmenter.split_indices(seq_len)
+        try:
+            cond_idx, eval_idx, unseen_idx = augmenter.split_indices(seq_len)
+        except ValueError:
+            # Skip if split generation fails (e.g., seq_len too short)
+            skipped += 1
+            continue
 
         # Store split
         splits[idx] = {
@@ -211,6 +221,9 @@ def generate_evaluation_splits(
             'unseen': unseen_idx,
             'seq_len': seq_len
         }
+
+    if verbose and skipped > 0:
+        print(f"\nSkipped {skipped} samples (too short or invalid)")
 
     # Save splits
     output_path = Path(output_file)
