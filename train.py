@@ -420,14 +420,39 @@ def parse_args():
         parser.add_argument(
             "--max_cond_blocks",
             type=int,
-            default=2,
+            default=3,
             help="Maximum number of conditioning blocks"
         )
         parser.add_argument(
             "--max_eval_blocks",
             type=int,
-            default=1,
+            default=2,
             help="Maximum number of evaluation blocks"
+        )
+        # Distribution parameters (must match training config for fair comparison)
+        parser.add_argument(
+            "--cond_pct_min",
+            type=float,
+            default=0.0,
+            help="Minimum conditioning percentage (default: 0.0 = 0%%)"
+        )
+        parser.add_argument(
+            "--cond_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum conditioning percentage (default: 0.4 = 40%%)"
+        )
+        parser.add_argument(
+            "--eval_pct_min",
+            type=float,
+            default=1.0,
+            help="Minimum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        parser.add_argument(
+            "--eval_pct_max",
+            type=float,
+            default=1.0,
+            help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)"
         )
         parser.add_argument(
             "--streaming",

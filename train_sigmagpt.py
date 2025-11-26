@@ -1,6 +1,16 @@
 """
 Sigma GPT Training Script
 
+DEPRECATED: This script is deprecated. Please use the unified pipeline instead:
+
+    python train.py --model_type sigmagpt --sigmagpt_mode fair ...
+    python train.py --model_type sigmagpt --sigmagpt_mode full ...
+
+This standalone script will be removed in a future version.
+Use train.py with --model_type sigmagpt for all Sigma GPT training.
+
+---
+
 Trains Sigma GPT model with arbitrary conditional probability modeling.
 Supports both Fair mode (~40% learning) and Full mode (100% learning).
 
@@ -8,7 +18,7 @@ Based on:
 - Sigma GPT paper (ArXiv 2404.09562)
 - GPT-2 training configuration
 
-Usage:
+Usage (DEPRECATED):
     # Fair mode (recommended for comparison with existing model)
     python train_sigmagpt.py --mode fair --model_config distilgpt2
 
@@ -453,6 +463,23 @@ def save_checkpoint(model, optimizer, scheduler, global_step, args):
 
 
 def main():
+    # DEPRECATION WARNING
+    import warnings
+    warnings.warn(
+        "\n" + "="*80 + "\n"
+        "DEPRECATION WARNING: train_sigmagpt.py is deprecated!\n"
+        "Please use the unified pipeline instead:\n"
+        "    python train.py --model_type sigmagpt --sigmagpt_mode fair ...\n"
+        "This script will be removed in a future version.\n"
+        + "="*80,
+        DeprecationWarning,
+        stacklevel=2
+    )
+    print("\n" + "="*80)
+    print("WARNING: train_sigmagpt.py is DEPRECATED!")
+    print("Please use: python train.py --model_type sigmagpt ...")
+    print("="*80 + "\n")
+
     args = parse_args()
 
     # Set random seed

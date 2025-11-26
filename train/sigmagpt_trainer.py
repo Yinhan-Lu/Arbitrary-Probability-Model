@@ -32,13 +32,54 @@ from train.dataset import get_dataloader
 from train.augmentation import ConditionalAugmenter
 from train.sigmagpt_adapter import SigmaGPTDataAdapter
 from train.blockwise_sampling import (
-    uniform_num_conditioning_distribution,
     uniform_num_blocks_distribution,
     uniform_block_sizes_distribution,
-    uniform_num_evaluation_distribution,
 )
+import random
 
 logger = logging.getLogger(__name__)
+
+
+def create_conditioning_distribution(cond_pct_min: float, cond_pct_max: float):
+    """
+    Create a conditioning distribution function with custom percentage range.
+
+    Args:
+        cond_pct_min: Minimum conditioning percentage (e.g., 0.0 for 0%)
+        cond_pct_max: Maximum conditioning percentage (e.g., 0.4 for 40%)
+
+    Returns:
+        Distribution function that takes seq_len and returns num_conditioning
+    """
+    def distribution(seq_len: int) -> int:
+        min_cond = max(0, int(seq_len * cond_pct_min))
+        max_cond = max(min_cond, int(seq_len * cond_pct_max))
+        max_cond = min(max_cond, seq_len - 1)  # Leave at least 1 for unknown
+        return random.randint(min_cond, max_cond)
+
+    return distribution
+
+
+def create_evaluation_distribution(eval_pct_min: float, eval_pct_max: float):
+    """
+    Create an evaluation distribution function with custom percentage range.
+
+    Args:
+        eval_pct_min: Minimum evaluation percentage of unknown set (e.g., 1.0 for 100%)
+        eval_pct_max: Maximum evaluation percentage of unknown set (e.g., 1.0 for 100%)
+
+    Returns:
+        Distribution function that takes available_len and returns num_evaluation
+    """
+    def distribution(available_len: int) -> int:
+        if available_len == 0:
+            return 0
+        min_eval = max(1, int(available_len * eval_pct_min))
+        max_eval = max(min_eval, int(available_len * eval_pct_max))
+        max_eval = min(max_eval, available_len)
+        return random.randint(min_eval, max_eval)
+
+    return distribution
 
 
 class SigmaGPTTrainer(BaseTrainer):
@@ -97,16 +138,26 @@ class SigmaGPTTrainer(BaseTrainer):
         # Unlike conditional model, we don't need to reserve space for BOS
         # because Sigma GPT doesn't use the augmented sequence format
 
-        # Create ConditionalAugmenter with distribution functions
+        # Create custom distribution functions based on CLI args
+        num_conditioning_distribution = create_conditioning_distribution(
+            self.args.cond_pct_min, self.args.cond_pct_max
+        )
+        num_evaluation_distribution = create_evaluation_distribution(
+            self.args.eval_pct_min, self.args.eval_pct_max
+        )
+        logger.info(f"Distribution config: cond={self.args.cond_pct_min*100:.0f}%-{self.args.cond_pct_max*100:.0f}%, "
+                   f"eval={self.args.eval_pct_min*100:.0f}%-{self.args.eval_pct_max*100:.0f}%")
+
+        # Create ConditionalAugmenter with custom distribution functions
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.tokenizer.eos_token_id,  # Dummy (not actually used by Sigma GPT)
             bos_token_id=self.tokenizer.eos_token_id,    # BOS token for augmenter
             max_seq_len=self.config.max_seq_len,  # Use full sequence length
             tokenizer_pad_token_id=self.tokenizer.pad_token_id,
-            num_conditioning_distribution=uniform_num_conditioning_distribution,
+            num_conditioning_distribution=num_conditioning_distribution,
             num_blocks_distribution=uniform_num_blocks_distribution,
             block_sizes_distribution=uniform_block_sizes_distribution,
-            num_evaluation_distribution=uniform_num_evaluation_distribution,
+            num_evaluation_distribution=num_evaluation_distribution,
             num_eval_blocks_distribution=uniform_num_blocks_distribution,
             eval_block_sizes_distribution=uniform_block_sizes_distribution,
             conditioning_sampling=self.args.conditioning_sampling,
