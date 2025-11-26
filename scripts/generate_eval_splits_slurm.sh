@@ -26,12 +26,19 @@ cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs
 mkdir -p utils/evaluation_splits
 
+# Distribution parameters - MUST match training config (submit_conditional_moderate_cond.sh)
+# Conditioning: 0-40% of sequence
+# Evaluation: 100% of non-conditioning tokens (no unseen set)
 python3 scripts/generate_eval_splits.py \
     --dataset wikitext \
     --dataset_config wikitext-103-raw-v1 \
     --split validation \
     --output utils/evaluation_splits/wikitext103_valid_seed42.pt \
     --seed 42 \
+    --cond_pct_min 0.0 \
+    --cond_pct_max 0.4 \
+    --eval_pct_min 1.0 \
+    --eval_pct_max 1.0 \
     --max_cond_blocks 3 \
     --max_eval_blocks 2
 
