@@ -1,0 +1,51 @@
+# Arbitrary Probability Model - Conda Environment
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate arbprob
+#
+# For CUDA support on cluster, replace pytorch with:
+#   pytorch::pytorch-cuda=12.1
+
+name: arbprob
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.10
+
+  # PyTorch (CPU version for Mac, change for CUDA on cluster)
+  - pytorch=2.5.1
+  - torchvision
+  - torchaudio
+
+  # Core scientific computing
+  - numpy
+  - pandas
+
+  # Visualization
+  - matplotlib
+  - seaborn
+  - pillow
+
+  # Utilities
+  - pyyaml
+  - tqdm
+  - requests
+
+  # Pip packages
+  - pip
+  - pip:
+      # HuggingFace ecosystem
+      - transformers>=4.30.0
+      - datasets>=2.12.0
+      - tokenizers
+      - huggingface-hub
+      - safetensors
+
+      # Optional: experiment tracking
+      # - tensorboard
+      # - wandb
