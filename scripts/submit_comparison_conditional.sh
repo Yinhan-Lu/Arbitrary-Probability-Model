@@ -36,6 +36,14 @@ export NVIDIA_TF32_OVERRIDE=1
 cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs
 
+# Load conda environment
+source ~/.bashrc
+conda activate arbprob
+
+echo "Python: $(which python3)"
+echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)')"
+echo "========================================="
+
 # Training parameters (matching submit_conditional_moderate_cond.sh)
 EXP_NAME="comparison_conditional"
 MODEL_CONFIG="distilgpt2"
