@@ -43,10 +43,8 @@ from model.token_manager import TokenManager
 from train.sigmagpt_adapter import SigmaGPTDataAdapter
 from train.augmentation import ConditionalAugmenter
 from train.blockwise_sampling import (
-    uniform_num_conditioning_distribution,
     uniform_num_blocks_distribution,
     uniform_block_sizes_distribution,
-    uniform_num_evaluation_distribution
 )
 from train.dataset import get_dataloader
 
@@ -56,6 +54,48 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+def create_conditioning_distribution(cond_pct_min: float, cond_pct_max: float):
+    """
+    Create a conditioning distribution function with custom percentage range.
+
+    Args:
+        cond_pct_min: Minimum conditioning percentage (e.g., 0.0 for 0%)
+        cond_pct_max: Maximum conditioning percentage (e.g., 0.4 for 40%)
+
+    Returns:
+        Distribution function that takes seq_len and returns num_conditioning
+    """
+    def distribution(seq_len: int) -> int:
+        min_cond = max(0, int(seq_len * cond_pct_min))
+        max_cond = max(min_cond, int(seq_len * cond_pct_max))
+        max_cond = min(max_cond, seq_len - 1)  # Leave at least 1 for unknown
+        return random.randint(min_cond, max_cond)
+
+    return distribution
+
+
+def create_evaluation_distribution(eval_pct_min: float, eval_pct_max: float):
+    """
+    Create an evaluation distribution function with custom percentage range.
+
+    Args:
+        eval_pct_min: Minimum evaluation percentage of unknown set (e.g., 1.0 for 100%)
+        eval_pct_max: Maximum evaluation percentage of unknown set (e.g., 1.0 for 100%)
+
+    Returns:
+        Distribution function that takes available_len and returns num_evaluation
+    """
+    def distribution(available_len: int) -> int:
+        if available_len == 0:
+            return 0
+        min_eval = max(1, int(available_len * eval_pct_min))
+        max_eval = max(min_eval, int(available_len * eval_pct_max))
+        max_eval = min(max_eval, available_len)
+        return random.randint(min_eval, max_eval)
+
+    return distribution
 
 
 def set_seed(seed):
@@ -147,10 +187,20 @@ def parse_args():
     parser.add_argument("--evaluation_sampling", type=str, default="blockwise",
                        choices=["blockwise", "uniform"],
                        help="Evaluation sampling strategy")
-    parser.add_argument("--max_cond_blocks", type=int, default=2,
+    parser.add_argument("--max_cond_blocks", type=int, default=3,
                        help="Maximum number of conditioning blocks")
-    parser.add_argument("--max_eval_blocks", type=int, default=1,
+    parser.add_argument("--max_eval_blocks", type=int, default=2,
                        help="Maximum number of evaluation blocks")
+
+    # Distribution parameters (must match training config for fair comparison)
+    parser.add_argument("--cond_pct_min", type=float, default=0.0,
+                       help="Minimum conditioning percentage (default: 0.0 = 0%%)")
+    parser.add_argument("--cond_pct_max", type=float, default=0.4,
+                       help="Maximum conditioning percentage (default: 0.4 = 40%%)")
+    parser.add_argument("--eval_pct_min", type=float, default=1.0,
+                       help="Minimum evaluation percentage of unknown (default: 1.0 = 100%%)")
+    parser.add_argument("--eval_pct_max", type=float, default=1.0,
+                       help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)")
 
     # NEW: Eric's two training methods
     parser.add_argument("--ordering_mode", type=str, default="temporal",
@@ -472,15 +522,24 @@ def main():
     )
     logger.info(f"Optimizer: AdamW (lr={args.learning_rate}, betas=({args.adam_beta1}, {args.adam_beta2}))")
 
+    # Create custom distribution functions based on CLI args
+    num_conditioning_distribution = create_conditioning_distribution(
+        args.cond_pct_min, args.cond_pct_max
+    )
+    num_evaluation_distribution = create_evaluation_distribution(
+        args.eval_pct_min, args.eval_pct_max
+    )
+    logger.info(f"Distribution config: cond={args.cond_pct_min*100:.0f}%-{args.cond_pct_max*100:.0f}%, eval={args.eval_pct_min*100:.0f}%-{args.eval_pct_max*100:.0f}%")
+
     # Initialize data augmenter
     augmenter = ConditionalAugmenter(
         mask_token_id=token_manager.mask_token_id,
         bos_token_id=token_manager.bos_token_id,
         max_seq_len=config.max_seq_len,
-        num_conditioning_distribution=uniform_num_conditioning_distribution,
+        num_conditioning_distribution=num_conditioning_distribution,
         num_blocks_distribution=uniform_num_blocks_distribution,
         block_sizes_distribution=uniform_block_sizes_distribution,
-        num_evaluation_distribution=uniform_num_evaluation_distribution,
+        num_evaluation_distribution=num_evaluation_distribution,
         num_eval_blocks_distribution=uniform_num_blocks_distribution,
         eval_block_sizes_distribution=uniform_block_sizes_distribution,
         conditioning_sampling=args.conditioning_sampling,
