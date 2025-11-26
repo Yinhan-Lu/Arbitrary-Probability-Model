@@ -26,7 +26,7 @@ from transformers import GPT2Tokenizer
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from train.base_trainer import BaseTrainer
-from model.sigmagpt_model import SigmaGPT
+from model.sigmagpt_from_baseline import SigmaGPTModel
 from model.config import get_config
 from train.dataset import get_dataloader
 from train.augmentation import ConditionalAugmenter
@@ -114,8 +114,8 @@ class SigmaGPTTrainer(BaseTrainer):
         self.tokenizer.pad_token = self.tokenizer.eos_token
         logger.info(f"Tokenizer initialized (vocab_size: {len(self.tokenizer)})")
 
-        # Initialize Sigma GPT model
-        self.model = SigmaGPT(self.config).to(self.device)
+        # Initialize Sigma GPT model (from baseline architecture)
+        self.model = SigmaGPTModel(self.config).to(self.device)
         logger.info(f"Sigma GPT initialized with {self.model.get_num_params() / 1e6:.2f}M parameters")
 
         # Store mode for logging
@@ -164,10 +164,12 @@ class SigmaGPTTrainer(BaseTrainer):
             evaluation_sampling=self.args.evaluation_sampling,
             max_cond_blocks=self.args.max_cond_blocks,
             max_eval_blocks=self.args.max_eval_blocks,
+            ordering_mode=self.args.ordering_mode,  # Eric's ordering modes: temporal or random_scramble
         )
         logger.info(f"ConditionalAugmenter initialized "
                    f"(conditioning: {self.args.conditioning_sampling}, "
-                   f"evaluation: {self.args.evaluation_sampling})")
+                   f"evaluation: {self.args.evaluation_sampling}, "
+                   f"ordering: {self.args.ordering_mode})")
 
         # Create SigmaGPTDataAdapter
         self.adapter = SigmaGPTDataAdapter(mode=self.sigmagpt_mode)

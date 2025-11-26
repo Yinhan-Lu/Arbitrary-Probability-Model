@@ -404,6 +404,13 @@ def parse_args():
             help="Sigma GPT training mode: 'fair' (~40%% learning) or 'full' (100%% learning)"
         )
         parser.add_argument(
+            "--ordering_mode",
+            type=str,
+            default="temporal",
+            choices=["temporal", "random_scramble"],
+            help="Ordering mode for Sigma GPT: 'temporal' or 'random_scramble'"
+        )
+        parser.add_argument(
             "--conditioning_sampling",
             type=str,
             default="blockwise",

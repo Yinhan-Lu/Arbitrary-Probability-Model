@@ -26,33 +26,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-class GPT2Config:
-    """Configuration class for GPT-2 model parameters"""
-
-    def __init__(
-        self,
-        vocab_size=50257,
-        n_layer=6,
-        n_head=12,
-        n_embd=768,
-        max_seq_len=1024,
-        dropout=0.1,
-        layer_norm_eps=1e-5,
-        ffn_mult=4,
-        activation_function="gelu_new",
-        **kwargs
-    ):
-        self.vocab_size = vocab_size
-        self.n_layer = n_layer
-        self.n_head = n_head
-        self.n_embd = n_embd
-        self.max_seq_len = max_seq_len
-        self.dropout = dropout
-        self.layer_norm_eps = layer_norm_eps
-        self.ffn_mult = ffn_mult
-        self.mlp_hidden_size = n_embd * ffn_mult
-        self.activation_function = activation_function
+# Use shared config from the project (instead of defining our own)
+from model.arbitrary_prob_gpt2 import GPT2Config
 
 
 class NewGELU(nn.Module):

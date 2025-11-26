@@ -63,7 +63,9 @@ echo "  Max Eval Blocks: 2"
 echo "  Eval Splits: utils/evaluation_splits/wikitext103_valid_seed42.pt"
 echo "========================================="
 
-python3 ./train_sigmagpt.py \
+# Using unified train.py pipeline (train_sigmagpt.py is deprecated)
+python3 ./train.py \
+    --model_type sigmagpt \
     --model_config $MODEL_CONFIG \
     --dataset_name wikitext \
     --dataset_config wikitext-103-raw-v1 \
@@ -78,17 +80,21 @@ python3 ./train_sigmagpt.py \
     --warmup_steps 2000 \
     --max_grad_norm 1.0 \
     --adam_beta1 0.9 \
-    --adam_beta2 0.95 \
-    --mode fair \
+    --adam_beta2 0.999 \
+    --sigmagpt_mode fair \
     --ordering_mode temporal \
+    --cond_pct_min 0.0 \
+    --cond_pct_max 0.4 \
+    --eval_pct_min 1.0 \
+    --eval_pct_max 1.0 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
     --max_cond_blocks 3 \
     --max_eval_blocks 2 \
-    --eval_splits_file utils/evaluation_splits/wikitext103_valid_seed42.pt \
     --logging_steps 10 \
     --eval_steps 500 \
     --save_steps 1000 \
+    --do_eval \
     --max_eval_batches 10 \
     --output_dir ./experiments \
     --exp_name $EXP_NAME \

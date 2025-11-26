@@ -33,6 +33,7 @@ CLAUDE.md
 # Model files
 *.pth
 *.pt
+!utils/evaluation_splits/*.pt
 *.ckpt
 *.pkl
 *.pickle
