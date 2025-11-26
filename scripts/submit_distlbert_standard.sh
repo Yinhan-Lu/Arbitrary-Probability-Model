@@ -88,35 +88,28 @@ echo "  Sampling:         pure MLM + BERT eval modes"
 echo "========================================="
 
 # Run training with standard hyperparameters
-python3 train.py \
+python -u train.py \
   --model_type distilbert \
-  --model_config $MODEL_CONFIG \
+  --model_config distilbert-base-uncased \
   --dataset_name wikitext \
   --dataset_config wikitext-103-v1 \
-  --num_epochs $NUM_EPOCHS \
-  --num_train_samples $NUM_SAMPLES \
-  --num_eval_samples $EVAL_SAMPLES \
-  --batch_size $BATCH_SIZE \
-  --eval_batch_size 16 \
-  --gradient_accumulation_steps $GRAD_ACCUM \
-  --learning_rate $LEARNING_RATE \
-  --warmup_steps 2000 \
-  --max_grad_norm 1.0 \
-  --weight_decay 0.01 \
-  --adam_beta1 0.9 \
-  --adam_beta2 0.999 \
-  --adam_epsilon 1e-8 \
-  --cond_pct_min $COND_PCT_MIN \
-  --cond_pct_max $COND_PCT_MAX \
-  --logging_steps 100 \
-  --eval_steps 2000 \
-  --max_eval_batches 10 \
-  --save_steps 10000 \
+  --num_epochs 1 \
+  --num_train_samples 1500 \
+  --num_eval_samples 300 \
+  --batch_size 1 \
+  --eval_batch_size 2 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 5e-4 \
+  --warmup_steps 50 \
+  --logging_steps 20 \
+  --eval_steps 60 \
+  --max_eval_batches 3 \
+  --save_steps 999999 \
   --do_eval \
-  --output_dir $OUTPUT_DIR \
-  --exp_name $EXP_NAME \
-  --device cuda \
-  --num_workers 4
+  --device cpu \
+  --output_dir ./experiments \
+  --exp_name distilbert_10min_debug
+
 
 EXIT_CODE=$?
 
