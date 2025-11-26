@@ -36,7 +36,8 @@ export NVIDIA_TF32_OVERRIDE=1
 cd "$SLURM_SUBMIT_DIR"
 mkdir -p logs
 
-# Load conda environment (Mila cluster)
+# Load CUDA and conda environment (Mila cluster)
+module load cuda/12.1.1/cudnn/8.9
 source /cvmfs/ai.mila.quebec/apps/x86_64/debian/anaconda/3/etc/profile.d/conda.sh
 conda activate arbprob
 
