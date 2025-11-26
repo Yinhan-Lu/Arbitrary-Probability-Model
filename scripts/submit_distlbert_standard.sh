@@ -45,6 +45,11 @@ cd "$SLURM_SUBMIT_DIR"
 # Create logs directory
 mkdir -p logs
 
+# Load CUDA and conda environment (Mila cluster)
+module load cuda/12.1.1/cudnn/8.9
+source /cvmfs/ai.mila.quebec/apps/x86_64/debian/anaconda/3/etc/profile.d/conda.sh
+conda activate arbprob
+
 # Print environment info
 echo "Environment Information:"
 echo "Python version:"
