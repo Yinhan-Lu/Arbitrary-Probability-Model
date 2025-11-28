@@ -60,17 +60,18 @@ echo "PyTorch version:"
 python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
 echo "========================================="
 
-# Training parameters
+# Training parameters (aligned with Sigma GPT paper: arXiv 2404.09562)
 MODEL_CONFIG=${MODEL_CONFIG:-"distilgpt2"}
 SIGMAGPT_MODE=${SIGMAGPT_MODE:-"fair"}
 EXP_NAME="sigmagpt_old_${SIGMAGPT_MODE}_${MODEL_CONFIG}"
 OUTPUT_DIR="./experiments"
 BATCH_SIZE=8
-GRAD_ACCUM=16
-NUM_SAMPLES=1000000
+GRAD_ACCUM=64                # Paper uses effective batch size 512 (8 * 64 = 512)
+NUM_SAMPLES=2000000          # Same as fair/full scripts
 EVAL_SAMPLES=10000
-LEARNING_RATE=5e-4
-NUM_EPOCHS=5
+LEARNING_RATE=2.5e-4         # Paper's learning rate
+NUM_EPOCHS=50                # Same as fair/full scripts
+WARMUP_STEPS=10000           # Paper's warmup steps
 
 echo "Training Configuration:"
 echo "  Model: $MODEL_CONFIG"
@@ -84,6 +85,10 @@ echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
 echo "  Training Samples: $NUM_SAMPLES"
 echo "  Eval Samples: $EVAL_SAMPLES"
 echo "  Learning Rate: $LEARNING_RATE"
+echo "  Warmup Steps: $WARMUP_STEPS"
+echo "========================================="
+echo "Paper Hyperparameters (arXiv 2404.09562):"
+echo "  - LR=2.5e-4, BS=512, Warmup=10K, WD=0.1"
 echo "========================================="
 echo "Conditioning Strategy:"
 echo "  Conditioning: 0-40% of sequence"
@@ -110,7 +115,7 @@ python3 ./train.py \
     --num_train_samples $NUM_SAMPLES \
     --num_eval_samples $EVAL_SAMPLES \
     --learning_rate $LEARNING_RATE \
-    --warmup_steps 2000 \
+    --warmup_steps $WARMUP_STEPS \
     --max_grad_norm 1.0 \
     --weight_decay 0.1 \
     --cond_pct_min 0.0 \
