@@ -27,7 +27,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from train.base_trainer import BaseTrainer
 from model.sigmagpt_from_baseline import SigmaGPTModel
+from model.sigmagpt_model_old import SigmaGPTOld
 from model.config import get_config
+from model.order_utils import apply_order, create_labels_fair, apply_labels_mask
 from train.dataset import get_dataloader
 from train.augmentation import ConditionalAugmenter
 from train.sigmagpt_adapter import SigmaGPTDataAdapter
@@ -114,14 +116,26 @@ class SigmaGPTTrainer(BaseTrainer):
         self.tokenizer.pad_token = self.tokenizer.eos_token
         logger.info(f"Tokenizer initialized (vocab_size: {len(self.tokenizer)})")
 
-        # Initialize Sigma GPT model (from baseline architecture)
-        self.model = SigmaGPTModel(self.config).to(self.device)
-        logger.info(f"Sigma GPT initialized with {self.model.get_num_params() / 1e6:.2f}M parameters")
+        # Get architecture type (default to 'new' if not specified)
+        self.sigmagpt_arch = getattr(self.args, 'sigmagpt_arch', 'new')
+        self.sigmagpt_eval_mode = getattr(self.args, 'sigmagpt_eval_mode', 'autoregressive')
+
+        # Initialize Sigma GPT model based on architecture choice
+        if self.sigmagpt_arch == 'old':
+            # Old architecture: double position encoding (paper's original)
+            self.model = SigmaGPTOld(self.config).to(self.device)
+            logger.info(f"Sigma GPT OLD (double position encoding) initialized with {self.model.get_num_params() / 1e6:.2f}M parameters")
+            logger.info(f"  Position embedding dim: n_embd // 2 = {self.config.n_embd // 2}")
+        else:
+            # New architecture: from baseline (standard position encoding)
+            self.model = SigmaGPTModel(self.config).to(self.device)
+            logger.info(f"Sigma GPT NEW (from baseline) initialized with {self.model.get_num_params() / 1e6:.2f}M parameters")
 
         # Store mode for logging
         self.sigmagpt_mode = self.args.sigmagpt_mode
         logger.info(f"Training mode: {self.sigmagpt_mode} "
                    f"({'~40% learning efficiency' if self.sigmagpt_mode == 'fair' else '100% learning efficiency'})")
+        logger.info(f"Evaluation mode: {self.sigmagpt_eval_mode}")
 
     def setup_data(self):
         """
@@ -260,15 +274,82 @@ class SigmaGPTTrainer(BaseTrainer):
         """
         Evaluate Sigma GPT model on validation set
 
-        Uses single-mode evaluation (same augmentation as training).
-        Computes average loss and perplexity over validation batches.
+        Supports two evaluation modes:
+        - 'autoregressive': Paper's standard left-to-right evaluation (Mode 1)
+        - 'training_dist': Same random augmentation as training
 
         Returns:
             dict with keys:
             - "loss": float - average validation loss
             - "perplexity": float - perplexity (exp(loss))
         """
-        logger.info("Running evaluation...")
+        if self.sigmagpt_eval_mode == 'autoregressive':
+            return self._evaluate_autoregressive()
+        else:
+            return self._evaluate_training_dist()
+
+    def _evaluate_autoregressive(self):
+        """
+        Mode 1: Standard autoregressive evaluation (paper's method)
+
+        - Order: [0, 1, 2, ..., seq_len-1, seq_len] (standard left-to-right)
+        - Conditioning: position 0 only
+        - Evaluation: positions 1 to seq_len-1
+        """
+        logger.info("Running autoregressive evaluation (paper's method)...")
+        self.model.eval()
+
+        total_loss = 0.0
+        total_tokens = 0
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(self.val_loader):
+                if batch_idx >= self.args.max_eval_batches:
+                    break
+
+                input_ids = batch['input_ids'].to(self.device)
+                batch_size, seq_len = input_ids.shape
+
+                # Create autoregressive order: [0, 1, 2, ..., seq_len-1, seq_len]
+                order = torch.arange(seq_len + 1, device=self.device, dtype=torch.long)
+                order = order.unsqueeze(0).expand(batch_size, -1)  # (B, seq_len+1)
+
+                # Apply order to get inputs and targets
+                inputs, targets = apply_order(input_ids, order)
+
+                # In autoregressive mode, all positions except first are evaluation
+                # Create targets with ignore_index=-1 for conditioning position
+                cond_size = 1
+                mask = create_labels_fair(order, cond_size, seq_len)
+                targets = apply_labels_mask(targets, mask)
+
+                # Forward pass
+                logits, loss = self.model(idx=inputs, order=order, targets=targets)
+
+                # Count valid tokens (not -1)
+                valid_tokens = (targets != -1).sum().item()
+                total_loss += loss.item() * valid_tokens
+                total_tokens += valid_tokens
+
+        # Compute average loss and perplexity
+        avg_loss = total_loss / total_tokens if total_tokens > 0 else float('inf')
+        perplexity = np.exp(avg_loss) if avg_loss < 20 else float('inf')
+
+        logger.info(f"Autoregressive eval complete: Loss={avg_loss:.4f}, Perplexity={perplexity:.2f}")
+
+        return {
+            "loss": avg_loss,
+            "perplexity": perplexity
+        }
+
+    def _evaluate_training_dist(self):
+        """
+        Training distribution evaluation (same augmentation as training)
+
+        Uses the same random augmentation as training.
+        Expected result: train_loss ≈ eval_loss
+        """
+        logger.info("Running training-distribution evaluation...")
         self.model.eval()
 
         total_loss = 0.0
@@ -307,7 +388,7 @@ class SigmaGPTTrainer(BaseTrainer):
         avg_loss = total_loss / total_tokens if total_tokens > 0 else float('inf')
         perplexity = np.exp(avg_loss) if avg_loss < 10 else float('inf')
 
-        logger.info(f"Evaluation complete: Loss={avg_loss:.4f}, Perplexity={perplexity:.2f}")
+        logger.info(f"Training-dist eval complete: Loss={avg_loss:.4f}, Perplexity={perplexity:.2f}")
 
         return {
             "loss": avg_loss,
@@ -323,7 +404,7 @@ class SigmaGPTTrainer(BaseTrainer):
         - train_loss, train_perplexity
         - eval_loss, eval_perplexity
         - learning_rate
-        - sigmagpt_mode
+        - sigmagpt_mode, sigmagpt_arch, sigmagpt_eval_mode
         """
         return [
             "step",
@@ -333,7 +414,9 @@ class SigmaGPTTrainer(BaseTrainer):
             "eval_loss",
             "eval_perplexity",
             "learning_rate",
-            "sigmagpt_mode"
+            "sigmagpt_mode",
+            "sigmagpt_arch",
+            "eval_mode"
         ]
 
     def format_train_metrics(self, avg_loss, perplexity, lr):
@@ -348,7 +431,9 @@ class SigmaGPTTrainer(BaseTrainer):
             'eval_loss': '',
             'eval_perplexity': '',
             'learning_rate': f'{lr:.2e}',
-            'sigmagpt_mode': self.sigmagpt_mode
+            'sigmagpt_mode': self.sigmagpt_mode,
+            'sigmagpt_arch': self.sigmagpt_arch,
+            'eval_mode': self.sigmagpt_eval_mode
         }
 
     def format_eval_metrics(self, eval_results):
@@ -363,5 +448,7 @@ class SigmaGPTTrainer(BaseTrainer):
             'eval_loss': f'{eval_results["loss"]:.6f}',
             'eval_perplexity': f'{eval_results["perplexity"]:.4f}',
             'learning_rate': f'{self.optimizer.param_groups[0]["lr"]:.2e}',
-            'sigmagpt_mode': self.sigmagpt_mode
+            'sigmagpt_mode': self.sigmagpt_mode,
+            'sigmagpt_arch': self.sigmagpt_arch,
+            'eval_mode': self.sigmagpt_eval_mode
         }

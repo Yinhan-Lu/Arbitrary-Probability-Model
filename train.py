@@ -404,6 +404,20 @@ def parse_args():
             help="Sigma GPT training mode: 'fair' (~40%% learning) or 'full' (100%% learning)"
         )
         parser.add_argument(
+            "--sigmagpt_arch",
+            type=str,
+            default="new",
+            choices=["new", "old"],
+            help="Sigma GPT architecture: 'new' (from baseline) or 'old' (double position encoding from paper)"
+        )
+        parser.add_argument(
+            "--sigmagpt_eval_mode",
+            type=str,
+            default="autoregressive",
+            choices=["autoregressive", "training_dist"],
+            help="Evaluation mode: 'autoregressive' (paper's left-to-right) or 'training_dist' (same as training)"
+        )
+        parser.add_argument(
             "--ordering_mode",
             type=str,
             default="temporal",
