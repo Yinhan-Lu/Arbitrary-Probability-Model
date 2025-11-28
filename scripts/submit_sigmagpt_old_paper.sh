@@ -52,12 +52,14 @@ cd "$SLURM_SUBMIT_DIR"
 # Create logs directory
 mkdir -p logs
 
+# Load CUDA and conda environment (Mila cluster)
+module load cuda/12.1.1/cudnn/8.9
+source /cvmfs/ai.mila.quebec/apps/x86_64/debian/anaconda/3/etc/profile.d/conda.sh
+conda activate arbprob
+
 # Print environment info
-echo "Environment Information:"
-echo "Python version:"
-python3 --version
-echo "PyTorch version:"
-python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+echo "Python: $(which python3)"
+echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
 # Training parameters (aligned with Sigma GPT paper: arXiv 2404.09562)
