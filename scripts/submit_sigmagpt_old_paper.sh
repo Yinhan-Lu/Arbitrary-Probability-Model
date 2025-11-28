@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=sigmagpt_old_paper
-#SBATCH --output=logs/sigmagpt_old_paper_%j.out
-#SBATCH --error=logs/sigmagpt_old_paper_%j.err
-#SBATCH --gres=gpu:a100:1
+#SBATCH --job-name=sigmagpt_old
+#SBATCH --output=logs/slurm_%j.out
+#SBATCH --error=logs/slurm_%j.err
+#SBATCH --time=2-00:00:00
+#SBATCH --gres=gpu:a100l:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --time=48:00:00
-#SBATCH --partition=long
+#SBATCH --mem=32G
+#SBATCH --ntasks=1
 
 # ==============================================================================
 # Sigma GPT OLD Architecture (Double Position Encoding) with Paper's Evaluation
@@ -19,78 +19,198 @@
 # Reference: https://arxiv.org/abs/2404.09562
 # ==============================================================================
 
-# Configuration
-MODEL_CONFIG=${MODEL_CONFIG:-"small"}
-SIGMAGPT_MODE=${SIGMAGPT_MODE:-"fair"}
-NUM_EPOCHS=${NUM_EPOCHS:-100}
-BATCH_SIZE=${BATCH_SIZE:-32}
-GRADIENT_ACCUMULATION=${GRADIENT_ACCUMULATION:-4}
-LEARNING_RATE=${LEARNING_RATE:-1e-4}
-EVAL_STEPS=${EVAL_STEPS:-1000}
-SAVE_STEPS=${SAVE_STEPS:-5000}
-LOGGING_STEPS=${LOGGING_STEPS:-100}
-
-# Generate experiment name with timestamp
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-EXP_NAME="sigmagpt_old_${SIGMAGPT_MODE}_${MODEL_CONFIG}_${TIMESTAMP}"
-
-echo "=============================================="
-echo "Sigma GPT OLD (Paper's Double Position Encoding)"
-echo "=============================================="
+echo "========================================="
+echo "SIGMA GPT OLD - PAPER'S ARCHITECTURE"
+echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
+echo "Job Name: $SLURM_JOB_NAME"
 echo "Node: $SLURM_NODELIST"
-echo "Experiment: $EXP_NAME"
-echo "Model config: $MODEL_CONFIG"
-echo "Architecture: OLD (double position encoding)"
-echo "Training mode: $SIGMAGPT_MODE"
-echo "Evaluation: autoregressive (paper's method)"
-echo "=============================================="
+echo "Partition: $SLURM_JOB_PARTITION"
+echo "GPUs: $SLURM_GPUS"
+echo "CPUs: $SLURM_CPUS_PER_TASK"
+echo "Memory: $SLURM_MEM_PER_NODE MB"
+echo "Start Time: $(date)"
+echo "========================================="
 
-# Activate environment
-source ~/.bashrc
-conda activate arbitrary_prob
+# Print GPU information
+echo "GPU Information:"
+nvidia-smi
+echo "========================================="
 
-# Print Python and PyTorch info
-echo ""
-echo "Environment:"
-python --version
-python -c "import torch; print(f'PyTorch: {torch.__version__}')"
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
-python -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
-echo ""
+# Set environment variables
+export CUDA_VISIBLE_DEVICES=0
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export TOKENIZERS_PARALLELISM=false
+export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
+
+# Enable TF32 for faster training on A100
+export NVIDIA_TF32_OVERRIDE=1
+
+# Change to submission directory (project root)
+cd "$SLURM_SUBMIT_DIR"
+
+# Create logs directory
+mkdir -p logs
+
+# Print environment info
+echo "Environment Information:"
+echo "Python version:"
+python3 --version
+echo "PyTorch version:"
+python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+echo "========================================="
+
+# Training parameters
+MODEL_CONFIG=${MODEL_CONFIG:-"distilgpt2"}
+SIGMAGPT_MODE=${SIGMAGPT_MODE:-"fair"}
+EXP_NAME="sigmagpt_old_${SIGMAGPT_MODE}_${MODEL_CONFIG}"
+OUTPUT_DIR="./experiments"
+BATCH_SIZE=8
+GRAD_ACCUM=16
+NUM_SAMPLES=1000000
+EVAL_SAMPLES=10000
+LEARNING_RATE=5e-4
+NUM_EPOCHS=5
+
+echo "Training Configuration:"
+echo "  Model: $MODEL_CONFIG"
+echo "  Architecture: OLD (double position encoding)"
+echo "  Position embedding: n_embd // 2 per position"
+echo "  Sigmagpt Mode: $SIGMAGPT_MODE"
+echo "  Epochs: $NUM_EPOCHS"
+echo "  Batch Size per Device: $BATCH_SIZE"
+echo "  Gradient Accumulation: $GRAD_ACCUM"
+echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
+echo "  Training Samples: $NUM_SAMPLES"
+echo "  Eval Samples: $EVAL_SAMPLES"
+echo "  Learning Rate: $LEARNING_RATE"
+echo "========================================="
+echo "Conditioning Strategy:"
+echo "  Conditioning: 0-40% of sequence"
+echo "  Evaluation: 100% of non-conditioning"
+echo "  Max Cond Blocks: 3"
+echo "  Max Eval Blocks: 2"
+echo "========================================="
+echo "Evaluation Mode:"
+echo "  Mode: autoregressive (paper's left-to-right)"
+echo "  This evaluates standard next-token prediction"
+echo "========================================="
 
 # Run training with OLD architecture and autoregressive evaluation
-echo "Starting training..."
-python train.py \
+python3 ./train.py \
     --model_type sigmagpt \
-    --model_config ${MODEL_CONFIG} \
-    --sigmagpt_mode ${SIGMAGPT_MODE} \
+    --model_config $MODEL_CONFIG \
+    --sigmagpt_mode $SIGMAGPT_MODE \
     --sigmagpt_arch old \
     --sigmagpt_eval_mode autoregressive \
-    --num_epochs ${NUM_EPOCHS} \
-    --batch_size ${BATCH_SIZE} \
-    --gradient_accumulation_steps ${GRADIENT_ACCUMULATION} \
-    --learning_rate ${LEARNING_RATE} \
-    --do_eval \
-    --eval_steps ${EVAL_STEPS} \
-    --save_steps ${SAVE_STEPS} \
-    --logging_steps ${LOGGING_STEPS} \
-    --exp_name ${EXP_NAME} \
-    --ordering_mode temporal \
+    --num_epochs $NUM_EPOCHS \
+    --batch_size $BATCH_SIZE \
+    --eval_batch_size 16 \
+    --gradient_accumulation_steps $GRAD_ACCUM \
+    --num_train_samples $NUM_SAMPLES \
+    --num_eval_samples $EVAL_SAMPLES \
+    --learning_rate $LEARNING_RATE \
+    --warmup_steps 2000 \
+    --max_grad_norm 1.0 \
+    --weight_decay 0.1 \
+    --cond_pct_min 0.0 \
+    --cond_pct_max 0.4 \
+    --eval_pct_min 1.0 \
+    --eval_pct_max 1.0 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --max_cond_blocks 2 \
-    --max_eval_blocks 1 \
-    --seed 42 \
+    --max_cond_blocks 3 \
+    --max_eval_blocks 2 \
+    --ordering_mode temporal \
+    --logging_steps 10 \
+    --eval_steps 500 \
+    --save_steps 1000 \
+    --do_eval \
+    --max_eval_batches 10 \
+    --output_dir $OUTPUT_DIR \
+    --exp_name $EXP_NAME \
+    --device cuda \
     --num_workers 4
 
-echo ""
-echo "=============================================="
-echo "Training completed!"
-echo "=============================================="
-echo ""
-echo "Key differences from NEW architecture:"
-echo "  - Position embedding: n_embd // 2 (not n_embd)"
-echo "  - Encodes: current position + next position"
-echo "  - Evaluation: autoregressive (left-to-right)"
-echo "=============================================="
+EXIT_CODE=$?
+
+echo "========================================="
+echo "Training Completed"
+echo "========================================="
+echo "Job finished at: $(date)"
+echo "Exit code: $EXIT_CODE"
+echo "Total duration: $SECONDS seconds (~$((SECONDS / 60)) minutes)"
+echo "========================================="
+
+# Print GPU memory usage at end
+echo "Final GPU Memory Usage:"
+nvidia-smi
+echo "========================================="
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "✓ Training completed successfully!"
+    echo ""
+
+    # Find the most recent experiment directory
+    LATEST_EXP=$(ls -dt $OUTPUT_DIR/${EXP_NAME}_* 2>/dev/null | head -1)
+
+    echo "Results:"
+    echo "  Experiment directory: $LATEST_EXP"
+    echo "  Checkpoints: $LATEST_EXP/checkpoints/"
+    echo "  Logs: $LATEST_EXP/logs/"
+    echo "  CSV Metrics: $LATEST_EXP/logs/metrics.csv"
+    echo ""
+    echo "Key differences from NEW architecture:"
+    echo "  - Position embedding: n_embd // 2 (not n_embd)"
+    echo "  - Encodes: current position + next position"
+    echo "  - Evaluation: autoregressive (left-to-right)"
+    echo ""
+
+    # Auto-generate visualization plots
+    if [ -n "$LATEST_EXP" ] && [ -d "$LATEST_EXP" ]; then
+        echo "========================================="
+        echo "AUTO-GENERATING VISUALIZATION PLOTS"
+        echo "========================================="
+
+        # Generate detailed individual plots
+        echo "Generating individual metric plots..."
+        python3 utils/plot_individual_metrics.py "$LATEST_EXP"
+        PLOT_EXIT_CODE=$?
+
+        if [ $PLOT_EXIT_CODE -eq 0 ]; then
+            echo "✓ Individual plots generated successfully!"
+            echo "  Location: $LATEST_EXP/plots_individual/"
+        else
+            echo "⚠ Warning: Failed to generate individual plots (exit code: $PLOT_EXIT_CODE)"
+        fi
+
+        # Generate comprehensive visualization dashboard
+        echo ""
+        echo "Generating comprehensive dashboard..."
+        python3 utils/quickstart_visualization.py "$LATEST_EXP"
+        DASH_EXIT_CODE=$?
+
+        if [ $DASH_EXIT_CODE -eq 0 ]; then
+            echo "✓ Dashboard generated successfully!"
+            echo "  Location: $LATEST_EXP/plots/"
+        else
+            echo "⚠ Warning: Failed to generate dashboard (exit code: $DASH_EXIT_CODE)"
+        fi
+
+        echo "========================================="
+        echo ""
+    fi
+
+    echo "To view metrics:"
+    echo "  cat $LATEST_EXP/logs/metrics.csv | column -t -s,"
+else
+    echo "✗ Training failed with exit code $EXIT_CODE"
+    echo ""
+    echo "Troubleshooting:"
+    echo "  1. Check error log: logs/slurm_${SLURM_JOB_ID}.err"
+    echo "  2. Check output log: logs/slurm_${SLURM_JOB_ID}.out"
+    echo "  3. Check GPU memory: nvidia-smi"
+fi
+echo "========================================="
+
+exit $EXIT_CODE
