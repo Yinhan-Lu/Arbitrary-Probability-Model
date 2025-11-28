@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=sigmagpt_old_paper
+#SBATCH --output=logs/sigmagpt_old_paper_%j.out
+#SBATCH --error=logs/sigmagpt_old_paper_%j.err
+#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=48:00:00
 #SBATCH --partition=long
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --time=24:00:00
-#SBATCH --output=experiments/%x_%j/logs/slurm-%j.out
-#SBATCH --error=experiments/%x_%j/logs/slurm-%j.out
 
 # ==============================================================================
 # Sigma GPT OLD Architecture (Double Position Encoding) with Paper's Evaluation
@@ -19,21 +19,16 @@
 # Reference: https://arxiv.org/abs/2404.09562
 # ==============================================================================
 
-set -e
-
 # Configuration
 MODEL_CONFIG=${MODEL_CONFIG:-"small"}
 SIGMAGPT_MODE=${SIGMAGPT_MODE:-"fair"}
-NUM_EPOCHS=${NUM_EPOCHS:-10}
-BATCH_SIZE=${BATCH_SIZE:-16}
+NUM_EPOCHS=${NUM_EPOCHS:-100}
+BATCH_SIZE=${BATCH_SIZE:-32}
 GRADIENT_ACCUMULATION=${GRADIENT_ACCUMULATION:-4}
-LEARNING_RATE=${LEARNING_RATE:-5e-4}
-EVAL_STEPS=${EVAL_STEPS:-500}
-SAVE_STEPS=${SAVE_STEPS:-1000}
+LEARNING_RATE=${LEARNING_RATE:-1e-4}
+EVAL_STEPS=${EVAL_STEPS:-1000}
+SAVE_STEPS=${SAVE_STEPS:-5000}
 LOGGING_STEPS=${LOGGING_STEPS:-100}
-NUM_TRAIN_SAMPLES=${NUM_TRAIN_SAMPLES:-100000}
-NUM_EVAL_SAMPLES=${NUM_EVAL_SAMPLES:-5000}
-MAX_EVAL_BATCHES=${MAX_EVAL_BATCHES:-50}
 
 # Generate experiment name with timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -51,17 +46,9 @@ echo "Training mode: $SIGMAGPT_MODE"
 echo "Evaluation: autoregressive (paper's method)"
 echo "=============================================="
 
-# Create experiment directory
-EXP_DIR="experiments/${EXP_NAME}"
-mkdir -p "${EXP_DIR}/logs"
-mkdir -p "${EXP_DIR}/checkpoints"
-
 # Activate environment
 source ~/.bashrc
-conda activate apm || source ~/venv/bin/activate || true
-
-# Change to project directory
-cd /home/mila/l/luy/Arbitrary-Probability-Model
+conda activate arbitrary_prob
 
 # Print Python and PyTorch info
 echo ""
@@ -88,18 +75,18 @@ python train.py \
     --eval_steps ${EVAL_STEPS} \
     --save_steps ${SAVE_STEPS} \
     --logging_steps ${LOGGING_STEPS} \
-    --num_train_samples ${NUM_TRAIN_SAMPLES} \
-    --num_eval_samples ${NUM_EVAL_SAMPLES} \
-    --max_eval_batches ${MAX_EVAL_BATCHES} \
     --exp_name ${EXP_NAME} \
     --ordering_mode temporal \
     --conditioning_sampling blockwise \
-    --evaluation_sampling blockwise
+    --evaluation_sampling blockwise \
+    --max_cond_blocks 2 \
+    --max_eval_blocks 1 \
+    --seed 42 \
+    --num_workers 4
 
 echo ""
 echo "=============================================="
 echo "Training completed!"
-echo "Results saved to: ${EXP_DIR}"
 echo "=============================================="
 echo ""
 echo "Key differences from NEW architecture:"
