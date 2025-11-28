@@ -260,7 +260,7 @@ class SigmaGPTTrainer(BaseTrainer):
         """
         Evaluate Sigma GPT model on validation set
 
-        Uses simple single-mode evaluation (not 5-mode like conditional model).
+        Uses single-mode evaluation (same augmentation as training).
         Computes average loss and perplexity over validation batches.
 
         Returns:
@@ -318,7 +318,7 @@ class SigmaGPTTrainer(BaseTrainer):
         """
         Get CSV header for logging
 
-        Format matches conditional model style but simplified:
+        Format:
         - step, epoch
         - train_loss, train_perplexity
         - eval_loss, eval_perplexity
