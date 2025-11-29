@@ -529,12 +529,10 @@ class IndicesSamplingCollateFn:
         for item in batch:
             input_ids = item['input_ids']
             seq_len = input_ids.size(0)
+            attention_mask = item['attention_mask']
 
             # Find valid (non-padding) positions
-            valid_positions = [
-                i for i in range(seq_len)
-                if input_ids[i] != self.pad_token_id
-            ]
+            valid_positions = [i for i in range(seq_len) if attention_mask[i] == 1]
 
             # Sample indices using augmenter
             cond_idx, eval_idx, unseen_idx = self.augmenter.split_indices(
