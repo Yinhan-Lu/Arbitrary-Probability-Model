@@ -61,9 +61,13 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
             batch_size, seq_len = input_ids.shape
 
             # Standard causal mask
-            attention_mask = torch.tril(torch.ones(seq_len, seq_len, device=device, dtype=torch.uint8))
-            attention_mask = attention_mask.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len, seq_len]
-            attention_mask = attention_mask.expand(batch_size, 1, seq_len, seq_len)
+            causal = torch.tril(torch.ones(seq_len, seq_len, device=device, dtype=torch.uint8))
+            attention_mask = causal.unsqueeze(0).unsqueeze(0).expand(batch_size, 1, seq_len, seq_len)
+
+            # Block padded queries/keys so padding tokens never influence attention
+            valid_tokens = attention_mask_1d.bool()
+            attention_mask = attention_mask & valid_tokens[:, None, None, :]  # mask keys
+            attention_mask = attention_mask & valid_tokens[:, None, :, None]  # mask queries
 
             # Forward pass
             # Model returns (logits, loss) tuple
