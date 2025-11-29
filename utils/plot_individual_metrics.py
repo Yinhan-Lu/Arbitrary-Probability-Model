@@ -396,9 +396,16 @@ def plot_epoch_comparison(df, output_dir):
         return
 
     plt.figure(figsize=(12, 6))
-    bp = plt.boxplot(valid_data, tick_labels=valid_epochs, patch_artist=True,
-                     boxprops=dict(facecolor='lightblue', alpha=0.7),
-                     medianprops=dict(color='red', linewidth=2))
+    # Use 'labels' for matplotlib < 3.9, 'tick_labels' for >= 3.9
+    try:
+        bp = plt.boxplot(valid_data, tick_labels=valid_epochs, patch_artist=True,
+                         boxprops=dict(facecolor='lightblue', alpha=0.7),
+                         medianprops=dict(color='red', linewidth=2))
+    except TypeError:
+        # Fallback for older matplotlib versions
+        bp = plt.boxplot(valid_data, labels=valid_epochs, patch_artist=True,
+                         boxprops=dict(facecolor='lightblue', alpha=0.7),
+                         medianprops=dict(color='red', linewidth=2))
 
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('Training Loss', fontsize=12)
@@ -436,8 +443,19 @@ def plot_all_metrics(exp_dir, output_dir=None):
     print('=' * 80)
 
     df = pd.read_csv(metrics_csv)
+    # Replace empty strings with NaN for proper handling
+    df = df.replace('', np.nan)
+    df = df.replace('inf', np.inf)
     print(f"✓ Loaded {len(df)} rows")
     print(f"\nAvailable columns: {', '.join(df.columns)}")
+
+    # Debug: show data availability
+    if 'train_loss' in df.columns:
+        train_count = df['train_loss'].notna().sum()
+        print(f"  train_loss rows: {train_count}")
+    if 'eval_loss' in df.columns:
+        eval_count = df['eval_loss'].notna().sum()
+        print(f"  eval_loss rows: {eval_count}")
 
     # Generate all plots
     print(f"\n{'=' * 80}")
