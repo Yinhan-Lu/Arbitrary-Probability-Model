@@ -191,10 +191,12 @@ class DistilBertTrainer(BaseTrainer):
             "loss", "perplexity",
             "learning_rate", "grad_norm",
             "tokens_per_second", "time_elapsed_seconds",
-            # BERT-mode-specific metrics
+            # BERT 5-mode-specific metrics
             "mode1_loss", "mode1_ppl",
             "mode2_loss", "mode2_ppl",
             "mode3_loss", "mode3_ppl",
+            "mode4_loss", "mode4_ppl",
+            "mode5_loss", "mode5_ppl",
         ]
 
 
@@ -224,9 +226,7 @@ class DistilBertTrainer(BaseTrainer):
 
         eval_results is whatever `evaluate()` returns, including:
         - loss, perplexity
-        - mode1_loss, mode1_ppl
-        - mode2_loss, mode2_ppl
-        - mode3_loss, mode3_ppl
+        - mode1_loss, mode1_ppl (to mode5_loss, mode5_ppl)
         """
         loss = eval_results.get("loss")
         perplexity = eval_results.get("perplexity")
@@ -241,13 +241,17 @@ class DistilBertTrainer(BaseTrainer):
             "tokens_per_second": None,
             "time_elapsed_seconds": None,
 
-            # mode-specific (important for plotting!)
+            # All 5 mode-specific metrics (important for plotting!)
             "mode1_loss": eval_results.get("mode1_loss"),
             "mode1_ppl": eval_results.get("mode1_ppl"),
             "mode2_loss": eval_results.get("mode2_loss"),
             "mode2_ppl": eval_results.get("mode2_ppl"),
             "mode3_loss": eval_results.get("mode3_loss"),
             "mode3_ppl": eval_results.get("mode3_ppl"),
+            "mode4_loss": eval_results.get("mode4_loss"),
+            "mode4_ppl": eval_results.get("mode4_ppl"),
+            "mode5_loss": eval_results.get("mode5_loss"),
+            "mode5_ppl": eval_results.get("mode5_ppl"),
         }
 
         row.update(extra)

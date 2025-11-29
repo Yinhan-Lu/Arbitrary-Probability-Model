@@ -181,7 +181,7 @@ def main():
     
     # Run evaluation
     logger.info("=" * 80)
-    logger.info("Starting BERT 3-mode evaluation")
+    logger.info("Starting BERT 5-mode evaluation")
     logger.info("=" * 80)
     
     metrics = evaluate_bert_all_modes(
@@ -214,6 +214,16 @@ def main():
     logger.info(f"  Loss: {metrics['mode3_loss']:.4f}")
     logger.info(f"  Perplexity: {metrics['mode3_ppl']:.2f}")
     logger.info(f"  Tokens: {metrics['mode3_tokens']}")
+    logger.info("")
+    logger.info("Mode 4 (Boundary Filling - Parallel Prediction):")
+    logger.info(f"  Loss: {metrics['mode4_loss']:.4f}")
+    logger.info(f"  Perplexity: {metrics['mode4_ppl']:.2f}")
+    logger.info(f"  Tokens: {metrics['mode4_tokens']}")
+    logger.info("")
+    logger.info("Mode 5 (Training Distribution - Parallel Prediction):")
+    logger.info(f"  Loss: {metrics['mode5_loss']:.4f}")
+    logger.info(f"  Perplexity: {metrics['mode5_ppl']:.2f}")
+    logger.info(f"  Tokens: {metrics['mode5_tokens']}")
     logger.info("=" * 80)
     
     # Save results
@@ -224,13 +234,15 @@ def main():
     # Save text summary
     results_file = results_dir / f"bert_eval_modes_{checkpoint_path.stem}.txt"
     with open(results_file, 'w') as f:
-        f.write("BERT 3-Mode Evaluation Results\n")
+        f.write("BERT 5-Mode Evaluation Results\n")
         f.write("=" * 80 + "\n")
         f.write(f"Checkpoint: {args.checkpoint}\n")
         f.write(f"Batches evaluated: {metrics['num_batches']}\n\n")
         f.write(f"Mode 1 (MLM Baseline): Loss={metrics['mode1_loss']:.4f}, PPL={metrics['mode1_ppl']:.2f}, Tokens={metrics['mode1_tokens']}\n")
-        f.write(f"Mode 2 (Boundary Fill): Loss={metrics['mode2_loss']:.4f}, PPL={metrics['mode2_ppl']:.2f}, Tokens={metrics['mode2_tokens']}\n")
-        f.write(f"Mode 3 (Training Dist): Loss={metrics['mode3_loss']:.4f}, PPL={metrics['mode3_ppl']:.2f}, Tokens={metrics['mode3_tokens']}\n")
+        f.write(f"Mode 2 (Boundary Iterative): Loss={metrics['mode2_loss']:.4f}, PPL={metrics['mode2_ppl']:.2f}, Tokens={metrics['mode2_tokens']}\n")
+        f.write(f"Mode 3 (Training Iterative): Loss={metrics['mode3_loss']:.4f}, PPL={metrics['mode3_ppl']:.2f}, Tokens={metrics['mode3_tokens']}\n")
+        f.write(f"Mode 4 (Boundary Parallel): Loss={metrics['mode4_loss']:.4f}, PPL={metrics['mode4_ppl']:.2f}, Tokens={metrics['mode4_tokens']}\n")
+        f.write(f"Mode 5 (Training Parallel): Loss={metrics['mode5_loss']:.4f}, PPL={metrics['mode5_ppl']:.2f}, Tokens={metrics['mode5_tokens']}\n")
     
     logger.info(f"Results saved to: {results_file}")
     
@@ -241,10 +253,12 @@ def main():
         writer = csv.writer(f)
         # Use same header as training metrics
         writer.writerow(['step', 'epoch', 'split', 'loss', 'perplexity', 'learning_rate', 'grad_norm', 'tokens_per_second', 'time_elapsed_seconds'])
-        # Mode 1 - use step=1 for mode1, step=2 for mode2, step=3 for mode3
+        # Mode 1-5 - use step=1 for mode1, step=2 for mode2, etc.
         writer.writerow([1, 1, 'eval_mode1', metrics['mode1_loss'], metrics['mode1_ppl'], None, None, None, None])
         writer.writerow([2, 1, 'eval_mode2', metrics['mode2_loss'], metrics['mode2_ppl'], None, None, None, None])
         writer.writerow([3, 1, 'eval_mode3', metrics['mode3_loss'], metrics['mode3_ppl'], None, None, None, None])
+        writer.writerow([4, 1, 'eval_mode4', metrics['mode4_loss'], metrics['mode4_ppl'], None, None, None, None])
+        writer.writerow([5, 1, 'eval_mode5', metrics['mode5_loss'], metrics['mode5_ppl'], None, None, None, None])
     
     logger.info(f"CSV saved to: {csv_file}")
     logger.info("")

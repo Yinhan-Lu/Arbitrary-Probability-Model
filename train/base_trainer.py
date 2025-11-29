@@ -356,6 +356,10 @@ class BaseTrainer(ABC):
 
                     # Evaluation
                     if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
+                        # Log current training loss before evaluation (if we haven't logged at this step yet)
+                        if self.global_step % self.args.logging_steps != 0 and running_loss > 0:
+                            self._log_training_metrics(running_loss)
+                        
                         logger.info(f"\nEvaluating at step {self.global_step}...")
                         eval_results = self.evaluate()
                         self._log_evaluation_metrics(eval_results)

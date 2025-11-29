@@ -88,6 +88,7 @@ echo "MLM eval cond%:   ${COND_PCT_MIN}-${COND_PCT_MAX}"
 echo "========================================="
 
 # Run large-scale training
+
 python3 ./train.py \
   --model_type distilbert \
   --model_config $MODEL_CONFIG \
@@ -100,18 +101,18 @@ python3 ./train.py \
   --num_train_samples $NUM_SAMPLES \
   --num_eval_samples $EVAL_SAMPLES \
   --learning_rate $LEARNING_RATE \
-  --warmup_steps $WARMUP_STEPS \
-  --max_grad_norm 1.0 \
-  --weight_decay 0.01 \
-  --adam_beta1 0.9 \
-  --adam_beta2 0.999 \
-  --adam_epsilon 1e-8 \
+  # --warmup_steps $WARMUP_STEPS \
+  # --max_grad_norm 1.0 \
+  # --weight_decay 0.01 \
+  # --adam_beta1 0.9 \
+  # --adam_beta2 0.999 \
+  # --adam_epsilon 1e-8 \
   --logging_steps 200 \
   --eval_steps 5000 \
   --save_steps 10000 \
-  --max_eval_batches 10 \
-  --cond_pct_min $COND_PCT_MIN \
-  --cond_pct_max $COND_PCT_MAX \
+  # --max_eval_batches 10 \
+  # --cond_pct_min $COND_PCT_MIN \
+  # --cond_pct_max $COND_PCT_MAX \
   --do_eval \
   --output_dir $OUTPUT_DIR \
   --exp_name $EXP_NAME \
