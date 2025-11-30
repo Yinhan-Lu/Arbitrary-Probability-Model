@@ -369,6 +369,21 @@ def parse_args():
             help="Maximum conditioning percentage for Mode 2 boundary evaluation"
         )
 
+        # Bug fix ablation switch
+        parser.add_argument(
+            "--use_attention_mask_for_valid",
+            action="store_true",
+            default=True,
+            help="Use attention_mask to determine valid positions (new correct behavior). "
+                 "If False, use pad_token_id (old buggy behavior that excludes EOS tokens)."
+        )
+        parser.add_argument(
+            "--no_use_attention_mask_for_valid",
+            dest="use_attention_mask_for_valid",
+            action="store_false",
+            help="Use pad_token_id to determine valid positions (old buggy behavior)"
+        )
+
     elif args.model_type == "baseline":
         # Baseline model specific arguments
         parser.add_argument(
