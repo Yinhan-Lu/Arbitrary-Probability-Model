@@ -193,3 +193,4 @@ archive/
 
 # Plots (visualization outputs)
 plots/
+hf_cache/
