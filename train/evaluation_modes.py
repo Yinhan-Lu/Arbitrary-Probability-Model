@@ -476,11 +476,24 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, t
 
     # Mode 4: Cross-boundary (reuse Mode 1 logits)
     logger.info("  Mode 4: Cross-boundary...")
-    # Group eval_indices by batch for Mode 2
+    # Group eval_indices by actual batch sizes recorded in Mode 1 to avoid misalignment
     eval_indices_mode2_grouped = []
-    batch_size = metrics_mode1['labels_list'][0].shape[0] if len(metrics_mode1['labels_list']) > 0 else 0
-    for i in range(0, len(metrics_mode2['eval_indices_list']), batch_size):
-        eval_indices_mode2_grouped.append(metrics_mode2['eval_indices_list'][i:i+batch_size])
+    cursor = 0
+    for logits_batch in metrics_mode1['logits_list']:
+        batch_size = logits_batch.shape[0]
+        batch_eval_indices = metrics_mode2['eval_indices_list'][cursor:cursor + batch_size]
+        if len(batch_eval_indices) < batch_size:
+            logger.warning(
+                f"Mode 4: expected {batch_size} eval index groups, got {len(batch_eval_indices)}. "
+                f"Some samples may be missing from Mode 2 outputs."
+            )
+        eval_indices_mode2_grouped.append(batch_eval_indices)
+        cursor += batch_size
+    if cursor != len(metrics_mode2['eval_indices_list']):
+        logger.warning(
+            f"Mode 4: unused eval index groups detected ({len(metrics_mode2['eval_indices_list']) - cursor}). "
+            f"Check dataloader batch sizes for consistency."
+        )
 
     metrics_mode4 = evaluate_mode4_cross_boundary(
         metrics_mode1['logits_list'],
@@ -491,10 +504,24 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, t
 
     # Mode 5: Cross-training (reuse Mode 1 logits)
     logger.info("  Mode 5: Cross-training...")
-    # Group eval_indices by batch for Mode 3
+    # Group eval_indices by actual batch sizes recorded in Mode 1 to avoid misalignment
     eval_indices_mode3_grouped = []
-    for i in range(0, len(metrics_mode3['eval_indices_list']), batch_size):
-        eval_indices_mode3_grouped.append(metrics_mode3['eval_indices_list'][i:i+batch_size])
+    cursor = 0
+    for logits_batch in metrics_mode1['logits_list']:
+        batch_size = logits_batch.shape[0]
+        batch_eval_indices = metrics_mode3['eval_indices_list'][cursor:cursor + batch_size]
+        if len(batch_eval_indices) < batch_size:
+            logger.warning(
+                f"Mode 5: expected {batch_size} eval index groups, got {len(batch_eval_indices)}. "
+                f"Some samples may be missing from Mode 3 outputs."
+            )
+        eval_indices_mode3_grouped.append(batch_eval_indices)
+        cursor += batch_size
+    if cursor != len(metrics_mode3['eval_indices_list']):
+        logger.warning(
+            f"Mode 5: unused eval index groups detected ({len(metrics_mode3['eval_indices_list']) - cursor}). "
+            f"Check dataloader batch sizes for consistency."
+        )
 
     metrics_mode5 = evaluate_mode5_cross_training(
         metrics_mode1['logits_list'],
