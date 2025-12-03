@@ -265,6 +265,7 @@ class BaselineTrainer(BaseTrainer):
 
         self.model.train()
         running_loss = 0
+        running_batch_count = 0  # Track actual batch count for accurate averaging
         self.optimizer.zero_grad()
 
         for epoch in range(self.args.num_epochs):
@@ -272,21 +273,32 @@ class BaselineTrainer(BaseTrainer):
             logger.info(f"\nEpoch {epoch + 1}/{self.args.num_epochs}")
 
             for batch_idx, batch in enumerate(self.train_loader):
+                # Calculate accumulation flags FIRST (needed for loss scaling)
+                is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
+                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+
+                # Calculate actual number of accumulated batches for this step
+                # (handles partial accumulation at epoch boundaries)
+                if is_last_batch and not is_accum_step:
+                    num_accumulated = (batch_idx % self.args.gradient_accumulation_steps) + 1
+                else:
+                    num_accumulated = self.args.gradient_accumulation_steps
+
                 # Training step (model-specific implementation)
                 loss = self.train_step(batch)
 
+                # Scale loss by actual accumulated steps (HuggingFace standard)
+                scaled_loss = loss / num_accumulated
+
                 # Backward pass (FP16-aware)
                 if self.use_amp:
-                    self.scaler.scale(loss).backward()
+                    self.scaler.scale(scaled_loss).backward()
                 else:
-                    loss.backward()
+                    scaled_loss.backward()
 
-                # Accumulate loss for logging
-                running_loss += loss.item() * self.args.gradient_accumulation_steps
-
-                # Gradient accumulation
-                is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
-                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+                # Accumulate unscaled loss for logging
+                running_loss += loss.item()
+                running_batch_count += 1
 
                 if is_accum_step or is_last_batch:
                     # Gradient clipping (FP16-aware)
@@ -312,8 +324,9 @@ class BaselineTrainer(BaseTrainer):
 
                     # Logging
                     if self.global_step % self.args.logging_steps == 0:
-                        self._log_training_metrics(running_loss)
+                        self._log_training_metrics(running_loss, running_batch_count)
                         running_loss = 0
+                        running_batch_count = 0
 
                     # Evaluation
                     if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
