@@ -138,7 +138,7 @@ def sigmagpt_evaluate_mode1_autoregressive(model, dataloader, device, max_batche
             # In autoregressive mode, all positions except first are evaluation
             # Create targets with ignore_index=-1 for conditioning position
             cond_size = 1
-            mask = create_labels_fair(order, seq_len, cond_size)
+            mask = create_labels_fair(order, cond_size, seq_len)
             targets = apply_labels_mask(targets, mask)
 
             # Forward pass
@@ -227,7 +227,7 @@ def sigmagpt_evaluate_mode2_boundary_filling(model, dataloader, device, max_batc
                 inputs_i, targets_i = apply_order(tokens, order_unsqueeze)
 
                 # Create targets with ignore_index=-1 for conditioning positions
-                mask = create_labels_fair(order_unsqueeze, seq_len, cond_size)
+                mask = create_labels_fair(order_unsqueeze, cond_size, seq_len)
                 targets_i = apply_labels_mask(targets_i, mask)
 
                 batch_inputs.append(inputs_i.squeeze(0))

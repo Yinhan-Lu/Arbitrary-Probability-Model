@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cmp_sgpt_temp
+#SBATCH --job-name=conv_cond
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
 #SBATCH --time=1-00:00:00
@@ -9,14 +9,16 @@
 #SBATCH --ntasks=1
 
 # ==========================================================================
-# COMPARISON EXPERIMENT: Sigma GPT (Temporal Ordering)
+# CONVERGENCE EXPERIMENT: Conditional Model (with Early Stopping)
 # ==========================================================================
-# Part of 3-way comparison: Conditional vs Sigma GPT (Temporal) vs Sigma GPT (Scramble)
-# Uses deterministic evaluation splits for fair comparison
-# Eric's Method 1: Maintains left-to-right order within conditioning/evaluation sets
+# Uses NEW EOS handling (use_attention_mask_for_valid) and early stopping
+# Stops training when mode3_loss converges (no improvement for 5 evals)
 
 echo "========================================="
-echo "COMPARISON EXPERIMENT: Sigma GPT (Temporal)"
+echo "CONVERGENCE EXPERIMENT: Conditional Model"
+echo "  Early stopping: patience=5 evals"
+echo "  Eval frequency: every 100 steps"
+echo "  EOS handling: NEW (attention_mask_for_valid)"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
@@ -46,8 +48,8 @@ echo "Python: $(which python3)"
 echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
-# Training parameters (matching conditional for fair comparison)
-EXP_NAME="comparison_sigmagpt_temporal"
+# Training parameters
+EXP_NAME="converge_conditional"
 MODEL_CONFIG="distilgpt2"
 BATCH_SIZE=8
 GRAD_ACCUM=16
@@ -61,50 +63,50 @@ echo "Configuration:"
 echo "  Model: $MODEL_CONFIG (81.9M params)"
 echo "  Train Samples: $NUM_SAMPLES"
 echo "  Eval Samples: $EVAL_SAMPLES"
-echo "  Epochs: $NUM_EPOCHS"
+echo "  Epochs: $NUM_EPOCHS (or until convergence)"
 echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
 echo "  Learning Rate: $LEARNING_RATE"
 echo "  Weight Decay: $WEIGHT_DECAY"
-echo "  Mode: fair"
-echo "  Ordering: temporal (Eric's Method 1)"
+echo "  Conditioning: 0-40%"
 echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
-echo "  Eval Splits: utils/evaluation_splits/wikitext103_valid_seed42.pt"
+echo ""
+echo "  ** Eval Steps: 100 (5x more frequent) **"
+echo "  ** Early Stopping Patience: 5 **"
+echo "  ** use_attention_mask_for_valid: TRUE (NEW BEHAVIOR) **"
 echo "========================================="
 
-# Using unified train.py pipeline (train_sigmagpt.py is deprecated)
 python3 ./train.py \
-    --model_type sigmagpt \
+    --model_type conditional \
     --model_config $MODEL_CONFIG \
-    --dataset_name wikitext \
-    --dataset_config wikitext-103-raw-v1 \
-    --num_train_samples $NUM_SAMPLES \
-    --num_eval_samples $EVAL_SAMPLES \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
     --eval_batch_size 16 \
     --gradient_accumulation_steps $GRAD_ACCUM \
+    --num_train_samples $NUM_SAMPLES \
+    --num_eval_samples $EVAL_SAMPLES \
     --learning_rate $LEARNING_RATE \
-    --weight_decay $WEIGHT_DECAY \
     --warmup_steps 2000 \
     --max_grad_norm 1.0 \
+    --weight_decay $WEIGHT_DECAY \
     --adam_beta1 0.9 \
     --adam_beta2 0.999 \
-    --sigmagpt_mode fair \
-    --ordering_mode temporal \
+    --adam_epsilon 1e-8 \
     --cond_pct_min 0.0 \
     --cond_pct_max 0.4 \
     --eval_pct_min 1.0 \
     --eval_pct_max 1.0 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
+    --min_conditioning 0 \
+    --min_evaluation 1 \
     --mode2_boundary_cond_pct_min 0.1 \
     --mode2_boundary_cond_pct_max 0.3 \
+    --use_attention_mask_for_valid \
     --logging_steps 10 \
-    --eval_steps 500 \
+    --eval_steps 100 \
     --save_steps 1000 \
+    --early_stopping_patience 5 \
     --do_eval \
     --max_eval_batches 10 \
     --output_dir ./experiments \

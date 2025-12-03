@@ -272,21 +272,55 @@ class SigmaGPTTrainer(BaseTrainer):
 
     def evaluate(self):
         """
-        Evaluate Sigma GPT model on validation set
+        Evaluate Sigma GPT model on validation set using 5-mode evaluation
 
-        Supports two evaluation modes:
-        - 'autoregressive': Paper's standard left-to-right evaluation (Mode 1)
-        - 'training_dist': Same random augmentation as training
+        Runs all 5 evaluation modes for fair comparison with conditional model:
+        - Mode 1: Standard autoregressive (left-to-right)
+        - Mode 2: Boundary filling (condition on boundaries, evaluate middle)
+        - Mode 3: Training distribution (same random split as training)
+        - Mode 4: Autoregressive on Mode 2's evaluation positions
+        - Mode 5: Autoregressive on Mode 3's evaluation positions
 
         Returns:
-            dict with keys:
-            - "loss": float - average validation loss
-            - "perplexity": float - perplexity (exp(loss))
+            dict with keys for all 5 modes: mode1_loss, mode1_ppl, ..., mode5_ppl
         """
-        if self.sigmagpt_eval_mode == 'autoregressive':
-            return self._evaluate_autoregressive()
-        else:
-            return self._evaluate_training_dist()
+        from train.sigmagpt_evaluation_modes import sigmagpt_evaluate_all_modes
+
+        # Get boundary conditioning percentage range for Mode 2
+        boundary_pct_range = (
+            getattr(self.args, 'mode2_boundary_cond_pct_min', 0.1),
+            getattr(self.args, 'mode2_boundary_cond_pct_max', 0.3)
+        )
+
+        eval_results = sigmagpt_evaluate_all_modes(
+            model=self.model,
+            dataloader=self.val_loader,
+            device=self.device,
+            augmenter=self.augmenter,
+            adapter=self.adapter,
+            max_batches=self.args.max_eval_batches,
+            boundary_cond_pct_range=boundary_pct_range
+        )
+
+        # Log all 5 modes
+        logger.info(f"=" * 80)
+        logger.info(f"Evaluation Results (Step {self.global_step})")
+        logger.info(f"=" * 80)
+        logger.info(f"Mode 1 (Autoregressive)   : loss={eval_results['mode1_loss']:.4f}, ppl={eval_results['mode1_ppl']:.2f}")
+        logger.info(f"Mode 2 (Boundary Filling) : loss={eval_results['mode2_loss']:.4f}, ppl={eval_results['mode2_ppl']:.2f}")
+        logger.info(f"Mode 3 (Training Dist)    : loss={eval_results['mode3_loss']:.4f}, ppl={eval_results['mode3_ppl']:.2f}")
+        logger.info(f"Mode 4 (Auto on Boundary) : loss={eval_results['mode4_loss']:.4f}, ppl={eval_results['mode4_ppl']:.2f}")
+        logger.info(f"Mode 5 (Auto on Training) : loss={eval_results['mode5_loss']:.4f}, ppl={eval_results['mode5_ppl']:.2f}")
+        logger.info(f"-" * 80)
+        logger.info(f"Comparisons:")
+        logger.info(f"  Mode 2 vs 4 (Boundary):  Δ={eval_results['mode2_loss'] - eval_results['mode4_loss']:.4f} (negative = SigmaGPT better)")
+        logger.info(f"  Mode 3 vs 5 (Training):  Δ={eval_results['mode3_loss'] - eval_results['mode5_loss']:.4f} (negative = SigmaGPT better)")
+        logger.info(f"=" * 80)
+
+        # Use Mode 3 loss as main criterion (same as conditional model)
+        eval_results["loss"] = eval_results["mode3_loss"]
+
+        return eval_results
 
     def _evaluate_autoregressive(self):
         """
@@ -399,24 +433,31 @@ class SigmaGPTTrainer(BaseTrainer):
         """
         Get CSV header for logging
 
-        Format:
+        Format matches conditional model for fair comparison:
         - step, epoch
         - train_loss, train_perplexity
-        - eval_loss, eval_perplexity
+        - mode1_loss, mode1_ppl, ..., mode5_loss, mode5_ppl
         - learning_rate
-        - sigmagpt_mode, sigmagpt_arch, sigmagpt_eval_mode
+        - sigmagpt_mode, ordering_mode (SigmaGPT-specific)
         """
         return [
             "step",
             "epoch",
             "train_loss",
             "train_perplexity",
-            "eval_loss",
-            "eval_perplexity",
+            "mode1_loss",
+            "mode1_ppl",
+            "mode2_loss",
+            "mode2_ppl",
+            "mode3_loss",
+            "mode3_ppl",
+            "mode4_loss",
+            "mode4_ppl",
+            "mode5_loss",
+            "mode5_ppl",
             "learning_rate",
             "sigmagpt_mode",
-            "sigmagpt_arch",
-            "eval_mode"
+            "ordering_mode"
         ]
 
     def format_train_metrics(self, avg_loss, perplexity, lr):
@@ -424,16 +465,24 @@ class SigmaGPTTrainer(BaseTrainer):
         Format training metrics for CSV logging
 
         During training step, eval metrics are empty.
+        Matches conditional model's 5-mode format for fair comparison.
         """
         return {
-            'train_loss': f'{avg_loss:.6f}',
-            'train_perplexity': f'{perplexity:.4f}',
-            'eval_loss': '',
-            'eval_perplexity': '',
-            'learning_rate': f'{lr:.2e}',
+            'train_loss': avg_loss,
+            'train_perplexity': perplexity,
+            'mode1_loss': '',
+            'mode1_ppl': '',
+            'mode2_loss': '',
+            'mode2_ppl': '',
+            'mode3_loss': '',
+            'mode3_ppl': '',
+            'mode4_loss': '',
+            'mode4_ppl': '',
+            'mode5_loss': '',
+            'mode5_ppl': '',
+            'learning_rate': lr,
             'sigmagpt_mode': self.sigmagpt_mode,
-            'sigmagpt_arch': self.sigmagpt_arch,
-            'eval_mode': self.sigmagpt_eval_mode
+            'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal')
         }
 
     def format_eval_metrics(self, eval_results):
@@ -441,14 +490,22 @@ class SigmaGPTTrainer(BaseTrainer):
         Format evaluation metrics for CSV logging
 
         During evaluation step, train metrics are empty.
+        Matches conditional model's 5-mode format for fair comparison.
         """
         return {
             'train_loss': '',
             'train_perplexity': '',
-            'eval_loss': f'{eval_results["loss"]:.6f}',
-            'eval_perplexity': f'{eval_results["perplexity"]:.4f}',
-            'learning_rate': f'{self.optimizer.param_groups[0]["lr"]:.2e}',
+            'mode1_loss': eval_results['mode1_loss'],
+            'mode1_ppl': eval_results['mode1_ppl'],
+            'mode2_loss': eval_results['mode2_loss'],
+            'mode2_ppl': eval_results['mode2_ppl'],
+            'mode3_loss': eval_results['mode3_loss'],
+            'mode3_ppl': eval_results['mode3_ppl'],
+            'mode4_loss': eval_results['mode4_loss'],
+            'mode4_ppl': eval_results['mode4_ppl'],
+            'mode5_loss': eval_results['mode5_loss'],
+            'mode5_ppl': eval_results['mode5_ppl'],
+            'learning_rate': self.optimizer.param_groups[0]["lr"],
             'sigmagpt_mode': self.sigmagpt_mode,
-            'sigmagpt_arch': self.sigmagpt_arch,
-            'eval_mode': self.sigmagpt_eval_mode
+            'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal')
         }

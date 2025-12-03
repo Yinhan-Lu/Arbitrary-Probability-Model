@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cmp_sgpt_temp
+#SBATCH --job-name=conv_sgpt_scr
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
 #SBATCH --time=1-00:00:00
@@ -9,14 +9,16 @@
 #SBATCH --ntasks=1
 
 # ==========================================================================
-# COMPARISON EXPERIMENT: Sigma GPT (Temporal Ordering)
+# CONVERGENCE EXPERIMENT: Sigma GPT (Random Scramble) with Early Stopping
 # ==========================================================================
-# Part of 3-way comparison: Conditional vs Sigma GPT (Temporal) vs Sigma GPT (Scramble)
-# Uses deterministic evaluation splits for fair comparison
-# Eric's Method 1: Maintains left-to-right order within conditioning/evaluation sets
+# Eric's Method 2: Randomly shuffles tokens within conditioning/evaluation sets
+# Stops training when mode3_loss converges (no improvement for 5 evals)
 
 echo "========================================="
-echo "COMPARISON EXPERIMENT: Sigma GPT (Temporal)"
+echo "CONVERGENCE EXPERIMENT: Sigma GPT (Scramble)"
+echo "  Early stopping: patience=5 evals"
+echo "  Eval frequency: every 100 steps"
+echo "  Ordering: random_scramble (Eric's Method 2)"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
@@ -47,7 +49,7 @@ echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
 # Training parameters (matching conditional for fair comparison)
-EXP_NAME="comparison_sigmagpt_temporal"
+EXP_NAME="converge_sigmagpt_scramble"
 MODEL_CONFIG="distilgpt2"
 BATCH_SIZE=8
 GRAD_ACCUM=16
@@ -61,15 +63,17 @@ echo "Configuration:"
 echo "  Model: $MODEL_CONFIG (81.9M params)"
 echo "  Train Samples: $NUM_SAMPLES"
 echo "  Eval Samples: $EVAL_SAMPLES"
-echo "  Epochs: $NUM_EPOCHS"
+echo "  Epochs: $NUM_EPOCHS (or until convergence)"
 echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
 echo "  Learning Rate: $LEARNING_RATE"
 echo "  Weight Decay: $WEIGHT_DECAY"
 echo "  Mode: fair"
-echo "  Ordering: temporal (Eric's Method 1)"
+echo "  Ordering: random_scramble (Eric's Method 2)"
 echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
-echo "  Eval Splits: utils/evaluation_splits/wikitext103_valid_seed42.pt"
+echo ""
+echo "  ** Eval Steps: 100 (5x more frequent) **"
+echo "  ** Early Stopping Patience: 5 **"
 echo "========================================="
 
 # Using unified train.py pipeline (train_sigmagpt.py is deprecated)
@@ -91,7 +95,7 @@ python3 ./train.py \
     --adam_beta1 0.9 \
     --adam_beta2 0.999 \
     --sigmagpt_mode fair \
-    --ordering_mode temporal \
+    --ordering_mode random_scramble \
     --cond_pct_min 0.0 \
     --cond_pct_max 0.4 \
     --eval_pct_min 1.0 \
@@ -103,8 +107,9 @@ python3 ./train.py \
     --mode2_boundary_cond_pct_min 0.1 \
     --mode2_boundary_cond_pct_max 0.3 \
     --logging_steps 10 \
-    --eval_steps 500 \
+    --eval_steps 100 \
     --save_steps 1000 \
+    --early_stopping_patience 5 \
     --do_eval \
     --max_eval_batches 10 \
     --output_dir ./experiments \

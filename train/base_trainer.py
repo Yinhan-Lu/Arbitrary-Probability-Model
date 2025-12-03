@@ -87,6 +87,8 @@ class BaseTrainer(ABC):
         self.global_step = 0
         self.epoch = 0
         self.best_val_loss = float('inf')
+        self.patience_counter = 0
+        self.early_stop_triggered = False
 
         # Setup CSV logger
         self.csv_log_file = self.exp_dir / "logs" / "metrics.csv"
@@ -377,11 +379,21 @@ class BaseTrainer(ABC):
                         eval_results = self.evaluate()
                         self._log_evaluation_metrics(eval_results)
 
-                        # Save best model
+                        # Save best model and check early stopping
                         if eval_results["loss"] < self.best_val_loss:
                             self.best_val_loss = eval_results["loss"]
+                            self.patience_counter = 0
                             logger.info(f"New best validation loss: {self.best_val_loss:.4f}")
                             self._save_checkpoint("best_model")
+                        else:
+                            self.patience_counter += 1
+                            if self.args.early_stopping_patience > 0:
+                                logger.info(f"No improvement. Patience: {self.patience_counter}/{self.args.early_stopping_patience}")
+                                if self.patience_counter >= self.args.early_stopping_patience:
+                                    logger.info(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
+                                    self.early_stop_triggered = True
+                                    self._save_checkpoint("early_stopped_model")
+                                    return
 
                         self.model.train()
 

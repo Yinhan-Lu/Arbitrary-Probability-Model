@@ -235,6 +235,12 @@ def parse_args():
         help="Save checkpoint every N steps"
     )
     parser.add_argument(
+        "--early_stopping_patience",
+        type=int,
+        default=0,
+        help="Number of evaluations without improvement before stopping. 0 = disabled"
+    )
+    parser.add_argument(
         "--max_eval_batches",
         type=int,
         default=100,
@@ -489,6 +495,19 @@ def parse_args():
             type=float,
             default=1.0,
             help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        # Mode 2 (Boundary filling) evaluation parameters
+        parser.add_argument(
+            "--mode2_boundary_cond_pct_min",
+            type=float,
+            default=0.1,
+            help="Minimum conditioning percentage for Mode 2 boundary evaluation"
+        )
+        parser.add_argument(
+            "--mode2_boundary_cond_pct_max",
+            type=float,
+            default=0.3,
+            help="Maximum conditioning percentage for Mode 2 boundary evaluation"
         )
         parser.add_argument(
             "--streaming",
