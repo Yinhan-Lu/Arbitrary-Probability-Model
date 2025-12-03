@@ -235,7 +235,7 @@ class SigmaGPTTrainer(BaseTrainer):
         2. Apply augmentation on CPU (loop over batch samples)
         3. Convert to Sigma GPT format using adapter
         4. Move to device and forward pass
-        5. Return scaled loss
+        5. Return raw loss (scaling handled in base_trainer.train())
 
         Note: Augmentation happens here (not in DataLoader) because:
         - Augmenter output includes indices needed by adapter
@@ -265,9 +265,7 @@ class SigmaGPTTrainer(BaseTrainer):
         # Forward pass
         logits, loss = self.model(idx=inputs, order=order, targets=targets)
 
-        # Scale loss for gradient accumulation
-        loss = loss / self.args.gradient_accumulation_steps
-
+        # Loss scaling is now handled in base_trainer.py train() method
         return loss
 
     def evaluate(self):

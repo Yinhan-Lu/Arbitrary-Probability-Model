@@ -127,7 +127,7 @@ class BaseTrainer(ABC):
             batch: Batch of data from dataloader
 
         Returns:
-            loss: Training loss (already divided by gradient_accumulation_steps)
+            loss: Raw training loss (scaling handled in train() method)
         """
         pass
 

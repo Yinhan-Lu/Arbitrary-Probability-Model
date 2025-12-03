@@ -121,7 +121,7 @@ class BaselineTrainer(BaseTrainer):
             batch: Batch from dataloader containing input_ids and attention_mask
 
         Returns:
-            loss: Training loss (scaled by gradient_accumulation_steps)
+            loss: Raw training loss (scaling handled in base_trainer.train())
         """
         input_ids = batch["input_ids"].to(self.device)
         attention_mask = batch["attention_mask"].to(self.device)
@@ -134,11 +134,10 @@ class BaselineTrainer(BaseTrainer):
         if self.use_amp:
             with autocast('cuda'):
                 logits, loss = self.model(input_ids, labels=labels)
-                loss = loss / self.args.gradient_accumulation_steps
         else:
             logits, loss = self.model(input_ids, labels=labels)
-            loss = loss / self.args.gradient_accumulation_steps
 
+        # Loss scaling is now handled in base_trainer.py train() method
         return loss
 
     @torch.no_grad()
