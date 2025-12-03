@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cond_moderate
+#SBATCH --job-name=cond_moderate_detached
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
 #SBATCH --time=1-00:00:00
@@ -8,13 +8,14 @@
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
 
-# Conditional training with moderate conditioning (20-40%) - Plan A
-# Improved regularization to prevent overfitting
-# NO unseen set: evaluation = all non-conditioning tokens
+# Conditional training with moderate conditioning (20-40%) - Plan A DETACHED
+# Same as submit_conditional_moderate_cond.sh but WITH detach_augmentation enabled
+# This blocks gradient flow through augmentation (mimics legacy external augmentation)
+# Used for comparison experiments to investigate Mode 2 performance differences
 # Model: distilgpt2 (81.9M params)
 
 echo "========================================="
-echo "CONDITIONAL TRAINING - MODERATE CONDITIONING (PLAN A)"
+echo "CONDITIONAL TRAINING - MODERATE CONDITIONING (PLAN A - DETACHED)"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Job Name: $SLURM_JOB_NAME"
@@ -55,7 +56,7 @@ python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA a
 echo "========================================="
 
 # Training parameters
-EXP_NAME="conditional_moderate_cond"
+EXP_NAME="conditional_moderate_cond_detached"
 OUTPUT_DIR="./experiments"
 MODEL_CONFIG="distilgpt2"
 BATCH_SIZE=8
@@ -65,13 +66,11 @@ EVAL_SAMPLES=10000
 LEARNING_RATE=5e-4
 NUM_EPOCHS=5
 
-# === AUGMENTATION DETACH OPTION (for debugging gradient flow) ===
-# Set to "true" to detach augmentation tensors (mimics legacy external augmentation)
-# Set to "false" for default behavior (gradients flow through augmentation)
-# This is useful for investigating Mode 2 performance differences
-DETACH_AUGMENTATION="false"  # Change to "true" to enable detach
+# === AUGMENTATION DETACH OPTION ===
+# ENABLED for this script - this is the key difference from the base script
+DETACH_AUGMENTATION="true"
 
-echo "Training Configuration (PLAN A - Conservative Anti-Overfitting):"
+echo "Training Configuration (PLAN A - DETACHED MODE):"
 echo "  Model: $MODEL_CONFIG (81.9M params)"
 echo "  Epochs: $NUM_EPOCHS"
 echo "  Batch Size per Device: $BATCH_SIZE"
@@ -92,12 +91,17 @@ echo "  Weight Decay: 0.1 (increased from 0.01)"
 echo "  More meaningful conditioning task (harder to memorize)"
 echo "========================================="
 echo "Augmentation Configuration:"
-echo "  Detach Augmentation: $DETACH_AUGMENTATION"
+echo "  Detach Augmentation: $DETACH_AUGMENTATION ⚠️  ENABLED"
 if [ "$DETACH_AUGMENTATION" = "true" ]; then
     echo "  → Gradients BLOCKED through augmentation (legacy-like)"
 else
     echo "  → Gradients FLOW through augmentation (default)"
 fi
+echo "========================================="
+echo "EXPERIMENT PURPOSE:"
+echo "  This is the DETACHED version for comparison experiments"
+echo "  Compare with: submit_conditional_moderate_cond.sh (default)"
+echo "  Goal: Test if gradient flow through augmentation affects Mode 2"
 echo "========================================="
 
 # Build training command with conditional detach augmentation flag
@@ -176,15 +180,18 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  Logs: $LATEST_EXP/logs/"
     echo "  CSV Metrics: $LATEST_EXP/logs/metrics.csv"
     echo ""
-    echo "Key improvements in this training (Plan A):"
-    echo "  ✓ Moderate conditioning (20-40%, up from 0-10%)"
-    echo "  ✓ Stronger weight decay (0.1, up from 0.01)"
-    echo "  ✓ More meaningful task (harder to memorize)"
+    echo "Key features of this training (Plan A - DETACHED):"
+    echo "  ✓ Moderate conditioning (0-40%)"
+    echo "  ✓ Stronger weight decay (0.1)"
+    echo "  ✓ Detached augmentation (gradients blocked)"
     echo ""
-    echo "Expected improvements:"
-    echo "  - Better generalization (lower eval loss)"
-    echo "  - Less overfitting (train/eval gap reduced)"
-    echo "  - Train loss should stay closer to eval loss"
+    echo "Comparison experiments:"
+    echo "  - This (detached): $LATEST_EXP"
+    echo "  - Default (no detach): experiments/conditional_moderate_cond_*"
+    echo ""
+    echo "Expected outcome if hypothesis is correct:"
+    echo "  - Mode 2 ppl should be closer to legacy (~120)"
+    echo "  - Mode 2 should NOT show artificially low ppl (~7)"
     echo ""
 
     # Auto-generate visualization plots
@@ -229,8 +236,11 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  Individual plots: $LATEST_EXP/plots_individual/"
     echo "  Dashboard: $LATEST_EXP/plots/"
     echo ""
-    echo "To compare with previous training:"
-    echo "  python3 utils/quickstart_visualization.py experiments/conditional_minimal_cond_* experiments/conditional_moderate_cond_* --compare"
+    echo "To compare detached vs default:"
+    echo "  python3 utils/quickstart_visualization.py \\"
+    echo "    experiments/conditional_moderate_cond_[TIMESTAMP] \\"
+    echo "    experiments/conditional_moderate_cond_detached_[TIMESTAMP] \\"
+    echo "    --compare"
 else
     echo "✗ Training failed with exit code $EXIT_CODE"
     echo ""

@@ -1,20 +1,26 @@
 #!/bin/bash
-#SBATCH --job-name=cond_moderate
+#SBATCH --job-name=sigmagpt_old
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
-#SBATCH --time=1-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --gres=gpu:a100l:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --ntasks=1
 
-# Conditional training with moderate conditioning (20-40%) - Plan A
-# Improved regularization to prevent overfitting
-# NO unseen set: evaluation = all non-conditioning tokens
-# Model: distilgpt2 (81.9M params)
+# ==============================================================================
+# Sigma GPT OLD Architecture (Double Position Encoding) with Paper's Evaluation
+# ==============================================================================
+# This script trains the ORIGINAL Sigma GPT model from the paper:
+# - Double position encoding (n_embd // 2 per position)
+# - Encodes both current position and next position
+# - Uses paper's autoregressive evaluation (left-to-right, Mode 1)
+#
+# Reference: https://arxiv.org/abs/2404.09562
+# ==============================================================================
 
 echo "========================================="
-echo "CONDITIONAL TRAINING - MODERATE CONDITIONING (PLAN A)"
+echo "SIGMA GPT OLD - PAPER'S ARCHITECTURE"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Job Name: $SLURM_JOB_NAME"
@@ -46,33 +52,34 @@ cd "$SLURM_SUBMIT_DIR"
 # Create logs directory
 mkdir -p logs
 
+# Load CUDA and conda environment (Mila cluster)
+module load cuda/12.1.1/cudnn/8.9
+source /cvmfs/ai.mila.quebec/apps/x86_64/debian/anaconda/3/etc/profile.d/conda.sh
+conda activate arbprob
+
 # Print environment info
-echo "Environment Information:"
-echo "Python version:"
-python3 --version
-echo "PyTorch version:"
-python3 -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
+echo "Python: $(which python3)"
+echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
-# Training parameters
-EXP_NAME="conditional_moderate_cond"
+# Training parameters (aligned with Sigma GPT paper: arXiv 2404.09562)
+MODEL_CONFIG=${MODEL_CONFIG:-"distilgpt2"}
+SIGMAGPT_MODE=${SIGMAGPT_MODE:-"fair"}
+EXP_NAME="sigmagpt_old_${SIGMAGPT_MODE}_${MODEL_CONFIG}"
 OUTPUT_DIR="./experiments"
-MODEL_CONFIG="distilgpt2"
 BATCH_SIZE=8
-GRAD_ACCUM=16
-NUM_SAMPLES=1000000
+GRAD_ACCUM=64                # Paper uses effective batch size 512 (8 * 64 = 512)
+NUM_SAMPLES=2000000          # Same as fair/full scripts
 EVAL_SAMPLES=10000
-LEARNING_RATE=5e-4
-NUM_EPOCHS=5
+LEARNING_RATE=2.5e-4         # Paper's learning rate
+NUM_EPOCHS=50                # Same as fair/full scripts
+WARMUP_STEPS=10000           # Paper's warmup steps
 
-# === AUGMENTATION DETACH OPTION (for debugging gradient flow) ===
-# Set to "true" to detach augmentation tensors (mimics legacy external augmentation)
-# Set to "false" for default behavior (gradients flow through augmentation)
-# This is useful for investigating Mode 2 performance differences
-DETACH_AUGMENTATION="false"  # Change to "true" to enable detach
-
-echo "Training Configuration (PLAN A - Conservative Anti-Overfitting):"
-echo "  Model: $MODEL_CONFIG (81.9M params)"
+echo "Training Configuration:"
+echo "  Model: $MODEL_CONFIG"
+echo "  Architecture: OLD (double position encoding)"
+echo "  Position embedding: n_embd // 2 per position"
+echo "  Sigmagpt Mode: $SIGMAGPT_MODE"
 echo "  Epochs: $NUM_EPOCHS"
 echo "  Batch Size per Device: $BATCH_SIZE"
 echo "  Gradient Accumulation: $GRAD_ACCUM"
@@ -80,30 +87,29 @@ echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
 echo "  Training Samples: $NUM_SAMPLES"
 echo "  Eval Samples: $EVAL_SAMPLES"
 echo "  Learning Rate: $LEARNING_RATE"
+echo "  Warmup Steps: $WARMUP_STEPS"
 echo "========================================="
-echo "Conditioning Strategy (MODIFIED):"
-echo "  Conditioning: 0-40% of sequence (moderate, up from 0-10%)"
-echo "  Evaluation: 100% of non-conditioning (no unseen set)"
+echo "Paper Hyperparameters (arXiv 2404.09562):"
+echo "  - LR=2.5e-4, BS=512, Warmup=10K, WD=0.1"
+echo "========================================="
+echo "Conditioning Strategy:"
+echo "  Conditioning: 0-40% of sequence"
+echo "  Evaluation: 100% of non-conditioning"
 echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
 echo "========================================="
-echo "Regularization Changes:"
-echo "  Weight Decay: 0.1 (increased from 0.01)"
-echo "  More meaningful conditioning task (harder to memorize)"
-echo "========================================="
-echo "Augmentation Configuration:"
-echo "  Detach Augmentation: $DETACH_AUGMENTATION"
-if [ "$DETACH_AUGMENTATION" = "true" ]; then
-    echo "  → Gradients BLOCKED through augmentation (legacy-like)"
-else
-    echo "  → Gradients FLOW through augmentation (default)"
-fi
+echo "Evaluation Mode:"
+echo "  Mode: autoregressive (paper's left-to-right)"
+echo "  This evaluates standard next-token prediction"
 echo "========================================="
 
-# Build training command with conditional detach augmentation flag
-TRAIN_CMD="python3 ./train.py \
-    --model_type conditional \
+# Run training with OLD architecture and autoregressive evaluation
+python3 ./train.py \
+    --model_type sigmagpt \
     --model_config $MODEL_CONFIG \
+    --sigmagpt_mode $SIGMAGPT_MODE \
+    --sigmagpt_arch old \
+    --sigmagpt_eval_mode autoregressive \
     --num_epochs $NUM_EPOCHS \
     --batch_size $BATCH_SIZE \
     --eval_batch_size 16 \
@@ -111,30 +117,18 @@ TRAIN_CMD="python3 ./train.py \
     --num_train_samples $NUM_SAMPLES \
     --num_eval_samples $EVAL_SAMPLES \
     --learning_rate $LEARNING_RATE \
-    --warmup_steps 2000 \
+    --warmup_steps $WARMUP_STEPS \
     --max_grad_norm 1.0 \
     --weight_decay 0.1 \
-    --adam_beta1 0.9 \
-    --adam_beta2 0.999 \
-    --adam_epsilon 1e-8 \
     --cond_pct_min 0.0 \
     --cond_pct_max 0.4 \
     --eval_pct_min 1.0 \
     --eval_pct_max 1.0 \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
-    --min_conditioning 0 \
-    --min_evaluation 1 \
-    --mode2_boundary_cond_pct_min 0.1 \
-    --mode2_boundary_cond_pct_max 0.3"
-
-# Add detach_augmentation flag if enabled
-if [ "$DETACH_AUGMENTATION" = "true" ]; then
-    TRAIN_CMD="$TRAIN_CMD --detach_augmentation"
-fi
-
-# Add remaining arguments
-TRAIN_CMD="$TRAIN_CMD \
+    --max_cond_blocks 3 \
+    --max_eval_blocks 2 \
+    --ordering_mode temporal \
     --logging_steps 10 \
     --eval_steps 500 \
     --save_steps 1000 \
@@ -143,10 +137,7 @@ TRAIN_CMD="$TRAIN_CMD \
     --output_dir $OUTPUT_DIR \
     --exp_name $EXP_NAME \
     --device cuda \
-    --num_workers 4"
-
-# Run training with distribution-based sampling
-eval $TRAIN_CMD
+    --num_workers 4
 
 EXIT_CODE=$?
 
@@ -176,15 +167,10 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "  Logs: $LATEST_EXP/logs/"
     echo "  CSV Metrics: $LATEST_EXP/logs/metrics.csv"
     echo ""
-    echo "Key improvements in this training (Plan A):"
-    echo "  ✓ Moderate conditioning (20-40%, up from 0-10%)"
-    echo "  ✓ Stronger weight decay (0.1, up from 0.01)"
-    echo "  ✓ More meaningful task (harder to memorize)"
-    echo ""
-    echo "Expected improvements:"
-    echo "  - Better generalization (lower eval loss)"
-    echo "  - Less overfitting (train/eval gap reduced)"
-    echo "  - Train loss should stay closer to eval loss"
+    echo "Key differences from NEW architecture:"
+    echo "  - Position embedding: n_embd // 2 (not n_embd)"
+    echo "  - Encodes: current position + next position"
+    echo "  - Evaluation: autoregressive (left-to-right)"
     echo ""
 
     # Auto-generate visualization plots
@@ -222,15 +208,8 @@ if [ $EXIT_CODE -eq 0 ]; then
         echo ""
     fi
 
-    echo "To view 5-mode evaluation results:"
+    echo "To view metrics:"
     echo "  cat $LATEST_EXP/logs/metrics.csv | column -t -s,"
-    echo ""
-    echo "Plots generated:"
-    echo "  Individual plots: $LATEST_EXP/plots_individual/"
-    echo "  Dashboard: $LATEST_EXP/plots/"
-    echo ""
-    echo "To compare with previous training:"
-    echo "  python3 utils/quickstart_visualization.py experiments/conditional_minimal_cond_* experiments/conditional_moderate_cond_* --compare"
 else
     echo "✗ Training failed with exit code $EXIT_CODE"
     echo ""
@@ -238,7 +217,6 @@ else
     echo "  1. Check error log: logs/slurm_${SLURM_JOB_ID}.err"
     echo "  2. Check output log: logs/slurm_${SLURM_JOB_ID}.out"
     echo "  3. Check GPU memory: nvidia-smi"
-    echo "  4. Verify data loading: ls experiments/"
 fi
 echo "========================================="
 

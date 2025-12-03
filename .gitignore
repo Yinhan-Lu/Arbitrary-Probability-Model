@@ -33,6 +33,7 @@ CLAUDE.md
 # Model files
 *.pth
 *.pt
+!utils/evaluation_splits/*.pt
 *.ckpt
 *.pkl
 *.pickle
@@ -180,4 +181,15 @@ slides/
 md_report/
 experiments/
 sigma-gpt/
-*_old.py
+result_of_two_pipeline/
+Updates-*.md
+Updates-*.docx
+
+# Test experiments
+test_exp/
+
+# Archive folder
+archive/
+
+# Plots (visualization outputs)
+plots/

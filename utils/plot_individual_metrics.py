@@ -284,6 +284,88 @@ def plot_single_mode(df, mode_num, output_dir):
     print(f"  ✓ Saved: {output_path}")
 
 
+def plot_sigmagpt_eval_loss(df, output_dir):
+    """Plot Sigma GPT evaluation loss vs step."""
+    if 'eval_loss' not in df.columns or df['eval_loss'].isna().all():
+        print("  ⚠ Skipping sigmagpt_eval_loss plot (no data)")
+        return
+
+    data = df[['step', 'eval_loss']].dropna()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(data['step'], data['eval_loss'], linewidth=2, color='#E63946', marker='s', markersize=4, alpha=0.7)
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Evaluation Loss', fontsize=12)
+    plt.title('Sigma GPT Evaluation Loss vs Step', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    output_path = output_dir / 'eval_loss_vs_step.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {output_path}")
+
+
+def plot_sigmagpt_eval_perplexity(df, output_dir):
+    """Plot Sigma GPT evaluation perplexity vs step."""
+    if 'eval_perplexity' not in df.columns or df['eval_perplexity'].isna().all():
+        print("  ⚠ Skipping sigmagpt_eval_perplexity plot (no data)")
+        return
+
+    data = df[['step', 'eval_perplexity']].dropna()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(data['step'], data['eval_perplexity'], linewidth=2, color='#A23B72', marker='s', markersize=4, alpha=0.7)
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Evaluation Perplexity', fontsize=12)
+    plt.title('Sigma GPT Evaluation Perplexity vs Step', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    output_path = output_dir / 'eval_perplexity_vs_step.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {output_path}")
+
+
+def plot_sigmagpt_train_vs_eval(df, output_dir):
+    """Plot training loss vs evaluation loss for Sigma GPT."""
+    has_train = 'train_loss' in df.columns and not df['train_loss'].isna().all()
+    has_eval = 'eval_loss' in df.columns and not df['eval_loss'].isna().all()
+
+    if not has_train and not has_eval:
+        print("  ⚠ Skipping sigmagpt_train_vs_eval plot (no data)")
+        return
+
+    plt.figure(figsize=(12, 6))
+
+    if has_train:
+        train_data = df[['step', 'train_loss']].dropna()
+        if len(train_data) > 0:
+            plt.plot(train_data['step'], train_data['train_loss'],
+                    linewidth=2, color='#2E86AB', marker='o', markersize=3,
+                    alpha=0.7, label='Train Loss')
+
+    if has_eval:
+        eval_data = df[['step', 'eval_loss']].dropna()
+        if len(eval_data) > 0:
+            plt.plot(eval_data['step'], eval_data['eval_loss'],
+                    linewidth=2, color='#E63946', marker='s', markersize=4,
+                    alpha=0.7, label='Eval Loss')
+
+    plt.xlabel('Step', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.title('Sigma GPT: Training Loss vs Evaluation Loss', fontsize=14, fontweight='bold')
+    plt.legend(loc='best', fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    output_path = output_dir / 'sigmagpt_train_vs_eval_loss.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {output_path}")
+
+
 def plot_epoch_comparison(df, output_dir):
     """Plot loss distribution by epoch using boxplots."""
     if 'train_loss' not in df.columns or df['train_loss'].isna().all():
@@ -314,9 +396,16 @@ def plot_epoch_comparison(df, output_dir):
         return
 
     plt.figure(figsize=(12, 6))
-    bp = plt.boxplot(valid_data, tick_labels=valid_epochs, patch_artist=True,
-                     boxprops=dict(facecolor='lightblue', alpha=0.7),
-                     medianprops=dict(color='red', linewidth=2))
+    # Use 'labels' for matplotlib < 3.9, 'tick_labels' for >= 3.9
+    try:
+        bp = plt.boxplot(valid_data, tick_labels=valid_epochs, patch_artist=True,
+                         boxprops=dict(facecolor='lightblue', alpha=0.7),
+                         medianprops=dict(color='red', linewidth=2))
+    except TypeError:
+        # Fallback for older matplotlib versions
+        bp = plt.boxplot(valid_data, labels=valid_epochs, patch_artist=True,
+                         boxprops=dict(facecolor='lightblue', alpha=0.7),
+                         medianprops=dict(color='red', linewidth=2))
 
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('Training Loss', fontsize=12)
@@ -354,8 +443,19 @@ def plot_all_metrics(exp_dir, output_dir=None):
     print('=' * 80)
 
     df = pd.read_csv(metrics_csv)
+    # Replace empty strings with NaN for proper handling
+    df = df.replace('', np.nan)
+    df = df.replace('inf', np.inf)
     print(f"✓ Loaded {len(df)} rows")
     print(f"\nAvailable columns: {', '.join(df.columns)}")
+
+    # Debug: show data availability
+    if 'train_loss' in df.columns:
+        train_count = df['train_loss'].notna().sum()
+        print(f"  train_loss rows: {train_count}")
+    if 'eval_loss' in df.columns:
+        eval_count = df['eval_loss'].notna().sum()
+        print(f"  eval_loss rows: {eval_count}")
 
     # Generate all plots
     print(f"\n{'=' * 80}")
@@ -371,7 +471,12 @@ def plot_all_metrics(exp_dir, output_dir=None):
     plot_train_vs_all_eval_losses(df, output_dir)
     plot_epoch_comparison(df, output_dir)
 
-    # Individual mode plots
+    # Sigma GPT specific plots (for eval_loss/eval_perplexity columns)
+    plot_sigmagpt_eval_loss(df, output_dir)
+    plot_sigmagpt_eval_perplexity(df, output_dir)
+    plot_sigmagpt_train_vs_eval(df, output_dir)
+
+    # Individual mode plots (for conditional model)
     for mode_num in range(1, 6):
         plot_single_mode(df, mode_num, output_dir)
 
@@ -393,6 +498,7 @@ def plot_all_metrics(exp_dir, output_dir=None):
             print(f"  Min: {train_loss_data.min():.4f} (step {df.loc[train_loss_data.idxmin(), 'step']:.0f})")
             print(f"  Max: {train_loss_data.max():.4f}")
 
+    # Conditional model mode losses
     for mode_num in range(1, 6):
         loss_col = f'mode{mode_num}_loss'
         if loss_col in df.columns:
@@ -402,6 +508,15 @@ def plot_all_metrics(exp_dir, output_dir=None):
                 print(f"  First: {mode_loss_data.iloc[0]:.4f}")
                 print(f"  Last: {mode_loss_data.iloc[-1]:.4f}")
                 print(f"  Min: {mode_loss_data.min():.4f} (step {df.loc[mode_loss_data.idxmin(), 'step']:.0f})")
+
+    # Sigma GPT eval loss
+    if 'eval_loss' in df.columns:
+        eval_loss_data = df['eval_loss'].dropna()
+        if len(eval_loss_data) > 0:
+            print(f"\nSigma GPT Eval Loss:")
+            print(f"  First: {eval_loss_data.iloc[0]:.4f}")
+            print(f"  Last: {eval_loss_data.iloc[-1]:.4f}")
+            print(f"  Min: {eval_loss_data.min():.4f} (step {df.loc[eval_loss_data.idxmin(), 'step']:.0f})")
 
     if 'step' in df.columns:
         total_steps = df['step'].max()

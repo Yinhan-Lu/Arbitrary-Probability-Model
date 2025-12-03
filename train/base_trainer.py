@@ -25,6 +25,7 @@ import logging
 import csv
 from datetime import datetime
 from tqdm import tqdm
+import math
 
 logging.basicConfig(
     level=logging.INFO,
@@ -244,7 +245,7 @@ class BaseTrainer(ABC):
         )
 
         # Calculate total training steps
-        steps_per_epoch = len(self.train_loader) // self.args.gradient_accumulation_steps
+        steps_per_epoch = math.ceil(len(self.train_loader) / self.args.gradient_accumulation_steps)
         self.total_steps = steps_per_epoch * self.args.num_epochs
 
         logger.info(f"Total training steps: {self.total_steps}")
@@ -310,6 +311,7 @@ class BaseTrainer(ABC):
 
         self.model.train()
         running_loss = 0
+        self.optimizer.zero_grad()
 
         for epoch in range(self.args.num_epochs):
             self.epoch = epoch
@@ -328,7 +330,10 @@ class BaseTrainer(ABC):
                 running_loss += loss.item() * self.args.gradient_accumulation_steps
 
                 # Gradient accumulation
-                if (batch_idx + 1) % self.args.gradient_accumulation_steps == 0:
+                is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
+                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+
+                if is_accum_step or is_last_batch:
                     # Gradient clipping
                     torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(),

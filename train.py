@@ -30,6 +30,9 @@ import sys
 import argparse
 import logging
 from pathlib import Path
+import random
+import numpy as np
+import torch
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -38,6 +41,7 @@ from train.conditional_trainer import ConditionalTrainer
 from train.baseline_trainer import BaselineTrainer
 from train.distilbert_trainer import DistilBertTrainer
 
+from train.sigmagpt_trainer import SigmaGPTTrainer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +49,35 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+def set_seed(seed):
+    """
+    Set random seed for reproducibility across all random sources
+
+    This function sets seeds for:
+    - Python's built-in random module
+    - NumPy random generator
+    - PyTorch CPU operations
+    - PyTorch CUDA operations (all GPUs)
+
+    Args:
+        seed: Integer seed value
+
+    Note:
+        - DataLoader workers need separate seed control via worker_init_fn
+        - For full determinism, also set CUBLAS and CUDNN environment variables
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Optional: Enable deterministic mode (may reduce performance)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
+
+    logger.info(f"Random seed set to: {seed}")
 
 
 def parse_args():
@@ -66,8 +99,8 @@ def parse_args():
         "--model_type",
         type=str,
         required=True,
-        choices=["conditional", "baseline", "distilbert"],
-        help="Type of model to train: 'conditional' or 'baseline'"
+        choices=["conditional", "baseline", "sigmagpt", "distilbert"],
+        help="Type of model to train: 'conditional', 'baseline', or 'sigmagpt' or 'distilbert'"
     )
 
     # ========== Common Arguments (Shared by All Models) ==========
@@ -215,6 +248,14 @@ def parse_args():
         help="Run evaluation during training"
     )
 
+    # Reproducibility arguments
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility"
+    )
+
     # Output arguments
     parser.add_argument(
         "--output_dir",
@@ -308,6 +349,13 @@ def parse_args():
             choices=["random", "blockwise"],
             help="Sampling mode for evaluation set: 'random' or 'blockwise'"
         )
+        parser.add_argument(
+            "--detach_augmentation",
+            action="store_true",
+            default=False,
+            help="Detach augmentation tensors to prevent gradient flow through augmentation operations. "
+                 "This makes internal augmentation behave like legacy external augmentation (for debugging/comparison)"
+        )
 
         # Mode 2 (Boundary filling) evaluation parameters
         parser.add_argument(
@@ -324,6 +372,22 @@ def parse_args():
         )
 
     elif args.model_type in ["baseline", "distilbert"]:
+        # Bug fix ablation switch
+        parser.add_argument(
+            "--use_attention_mask_for_valid",
+            action="store_true",
+            default=True,
+            help="Use attention_mask to determine valid positions (new correct behavior). "
+                 "If False, use pad_token_id (old buggy behavior that excludes EOS tokens)."
+        )
+        parser.add_argument(
+            "--no_use_attention_mask_for_valid",
+            dest="use_attention_mask_for_valid",
+            action="store_false",
+            help="Use pad_token_id to determine valid positions (old buggy behavior)"
+        )
+
+    elif args.model_type == "baseline":
         # Baseline model specific arguments
         parser.add_argument(
             "--fp16",
@@ -360,6 +424,116 @@ def parse_args():
             help="Maximum percentage of conditioning tokens for BERT evaluation mode 3"
         )
 
+    elif args.model_type == "sigmagpt":
+        # Sigma GPT specific arguments
+        parser.add_argument(
+            "--sigmagpt_mode",
+            type=str,
+            default="fair",
+            choices=["fair", "full"],
+            help="Sigma GPT training mode: 'fair' (~40%% learning) or 'full' (100%% learning)"
+        )
+        parser.add_argument(
+            "--sigmagpt_arch",
+            type=str,
+            default="new",
+            choices=["new", "old"],
+            help="Sigma GPT architecture: 'new' (from baseline) or 'old' (double position encoding from paper)"
+        )
+        parser.add_argument(
+            "--sigmagpt_eval_mode",
+            type=str,
+            default="autoregressive",
+            choices=["autoregressive", "training_dist"],
+            help="Evaluation mode: 'autoregressive' (paper's left-to-right) or 'training_dist' (same as training)"
+        )
+        parser.add_argument(
+            "--ordering_mode",
+            type=str,
+            default="temporal",
+            choices=["temporal", "random_scramble"],
+            help="Ordering mode for Sigma GPT: 'temporal' or 'random_scramble'"
+        )
+        parser.add_argument(
+            "--conditioning_sampling",
+            type=str,
+            default="blockwise",
+            choices=["random", "blockwise"],
+            help="Conditioning sampling strategy"
+        )
+        parser.add_argument(
+            "--evaluation_sampling",
+            type=str,
+            default="blockwise",
+            choices=["random", "blockwise"],
+            help="Evaluation sampling strategy"
+        )
+        parser.add_argument(
+            "--max_cond_blocks",
+            type=int,
+            default=3,
+            help="Maximum number of conditioning blocks"
+        )
+        parser.add_argument(
+            "--max_eval_blocks",
+            type=int,
+            default=2,
+            help="Maximum number of evaluation blocks"
+        )
+        # Distribution parameters (must match training config for fair comparison)
+        parser.add_argument(
+            "--cond_pct_min",
+            type=float,
+            default=0.0,
+            help="Minimum conditioning percentage (default: 0.0 = 0%%)"
+        )
+        parser.add_argument(
+            "--cond_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum conditioning percentage (default: 0.4 = 40%%)"
+        )
+        parser.add_argument(
+            "--eval_pct_min",
+            type=float,
+            default=1.0,
+            help="Minimum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        parser.add_argument(
+            "--eval_pct_max",
+            type=float,
+            default=1.0,
+            help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        parser.add_argument(
+            "--streaming",
+            action="store_true",
+            help="Use streaming dataset"
+        )
+        parser.add_argument(
+            "--dataset_name",
+            type=str,
+            default="wikitext",
+            help="Dataset name"
+        )
+        parser.add_argument(
+            "--dataset_config",
+            type=str,
+            default="wikitext-103-raw-v1",
+            help="Dataset configuration"
+        )
+        parser.add_argument(
+            "--primary_dataset_only",
+            action="store_true",
+            default=True,
+            help="Use only primary dataset (no secondary augmentation)"
+        )
+        parser.add_argument(
+            "--fp16",
+            action="store_true",
+            help="Use mixed precision training (FP16)"
+        )
+
     # Parse all arguments
     args = parser.parse_args()
 
@@ -374,7 +548,7 @@ def create_trainer(args):
         args: Parsed command-line arguments
 
     Returns:
-        trainer: ConditionalTrainer or BaselineTrainer instance
+        trainer: ConditionalTrainer, BaselineTrainer, or SigmaGPTTrainer instance
     """
     if args.model_type == "conditional":
         logger.info("Creating Conditional Trainer...")
@@ -385,6 +559,9 @@ def create_trainer(args):
     elif args.model_type == "distilbert":
         logger.info("Creating DistilBert Trainer...")
         return DistilBertTrainer(args)
+    elif args.model_type == "sigmagpt":
+        logger.info("Creating Sigma GPT Trainer...")
+        return SigmaGPTTrainer(args)
     else:
         raise ValueError(f"Unknown model_type: {args.model_type}")
 
@@ -394,6 +571,9 @@ def main():
 
     # Parse arguments
     args = parse_args()
+
+    # Set random seed for reproducibility
+    set_seed(args.seed)
 
     # Print configuration
     logger.info("=" * 80)

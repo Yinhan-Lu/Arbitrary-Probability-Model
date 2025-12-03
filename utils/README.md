@@ -21,9 +21,11 @@ These are **convenience wrappers** - they don't contain core logic (which lives 
 
 ```
 utils/
-├── README.md                      # This file
-├── CHEATSHEET.md                  # Quick command reference
-├── quickstart_visualization.py    # Experiment visualization
+├── README.md                           # This file
+├── CHEATSHEET.md                       # Quick command reference
+├── quickstart_visualization.py         # Experiment visualization
+├── analyze_pipeline_differences.py     # Deep analysis of pipeline differences
+├── compare_experiments.py              # Statistical comparison of experiments
 └── (future utilities...)
 ```
 
@@ -80,6 +82,129 @@ python utils/quickstart_visualization.py --all --pattern "distilgpt2_*"
 
 ---
 
+### 2. `analyze_pipeline_differences.py` - Pipeline Comparison Analysis
+
+**Purpose:** Deep analysis of performance differences between two training pipelines
+
+**Features:**
+- 📊 Side-by-side training curve comparisons for all modes
+- 🔍 Divergence point identification (when curves start separating)
+- 📈 Training loss progression analysis
+- 📋 Comprehensive text summary reports
+- 🎯 Automatic anomaly detection
+
+**Usage:**
+
+```bash
+# List all available experiments
+python utils/analyze_pipeline_differences.py --list
+
+# Interactive mode (select from list)
+python utils/analyze_pipeline_differences.py --interactive
+
+# Use experiment names directly (auto-detected in experiments/)
+python utils/analyze_pipeline_differences.py exp1_name exp2_name
+
+# Use partial names (glob matching)
+python utils/analyze_pipeline_differences.py moderate detached
+
+# Use full paths (also works)
+python utils/analyze_pipeline_differences.py \
+    experiments/exp1 \
+    experiments/exp2 \
+    --output comparison_results
+
+# Specify custom base directory
+python utils/analyze_pipeline_differences.py \
+    exp1 exp2 \
+    --base-dir result_of_two_pipeline
+```
+
+**Outputs:**
+- Individual mode comparison plots (mode1-5)
+- All modes overview plot
+- Training loss comparison
+- Detailed text report with:
+  - Final performance table
+  - Divergence point analysis
+  - Step-by-step progression
+  - Statistical summaries
+
+**Saved to:** `<output_dir>/` containing:
+- `mode*_comparison.png` - Per-mode plots
+- `all_modes_overview.png` - Overview visualization
+- `training_loss_comparison.png` - Loss curves
+- `analysis_report.txt` - Comprehensive text report
+
+**When to use:**
+- Investigating why different pipelines produce different results
+- Understanding when performance divergence occurs during training
+- Comparing refactored vs original implementations
+- Debugging unexpected evaluation results
+
+**Dependencies:**
+- matplotlib
+- pandas
+- numpy
+- scipy
+
+---
+
+### 3. `compare_experiments.py` - Statistical Comparison
+
+**Purpose:** Detailed statistical analysis of experiment differences
+
+**Features:**
+- 📊 Comprehensive statistics (mean, std, variance, CV)
+- 🔬 Statistical significance testing (t-test, effect size)
+- 📈 Convergence analysis
+- 🔍 Anomaly detection in training curves
+- 📋 Overfitting indicators
+
+**Usage:**
+
+```bash
+# List all available experiments
+python utils/compare_experiments.py --list
+
+# Interactive mode (select from list)
+python utils/compare_experiments.py --interactive
+
+# Use experiment names directly
+python utils/compare_experiments.py exp1_name exp2_name
+
+# Use partial names (glob matching)
+python utils/compare_experiments.py moderate detached
+
+# Save results to file
+python utils/compare_experiments.py exp1 exp2 --output comparison_stats.txt
+
+# Specify custom base directory
+python utils/compare_experiments.py exp1 exp2 --base-dir result_of_two_pipeline
+```
+
+**Outputs (printed to console):**
+- Mode-by-mode comparison table
+- Training dynamics analysis
+- Detailed Mode 2 progression
+- Statistical significance tests
+- Effect size calculations
+- Overfitting warnings
+
+**When to use:**
+- Verifying statistical significance of performance differences
+- Analyzing training stability
+- Detecting overfitting patterns
+- Checking convergence behavior
+- Quantifying effect sizes
+
+**Dependencies:**
+- pandas
+- numpy
+- scipy (for statistical tests)
+
+---
+
 ## 🔧 Related Scripts (Outside utils/)
 
 While `utils/` contains convenience scripts, core testing is elsewhere:
@@ -128,7 +253,9 @@ sbatch scripts/sanity_run.sh
 | Quick model check | `python utils/quick_test.py` | ~10s |
 | Full sanity check | `python train/sanity.py` | ~2-3min |
 | Visualize experiment | `python utils/quickstart_visualization.py experiments/exp_name` | ~5s |
-| Compare experiments | `python utils/quickstart_visualization.py exp1 exp2 --compare` | ~10s |
+| Compare experiments (visual) | `python utils/quickstart_visualization.py exp1 exp2 --compare` | ~10s |
+| Analyze pipeline differences | `python utils/analyze_pipeline_differences.py exp1 exp2` | ~15s |
+| Statistical comparison | `python utils/compare_experiments.py exp1 exp2` | ~5s |
 | SLURM sanity test | `sbatch scripts/sanity_run.sh` | ~5min |
 
 ---

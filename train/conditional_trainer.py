@@ -65,6 +65,11 @@ class ConditionalTrainer(BaseTrainer):
         # Get model configuration
         self.config = get_config(self.args.model_config)
 
+        # Set detach_augmentation parameter from args
+        if hasattr(self.args, 'detach_augmentation'):
+            self.config.detach_augmentation = self.args.detach_augmentation
+            logger.info(f"Detach augmentation: {self.config.detach_augmentation}")
+
         # Initialize token manager with special tokens
         self.token_manager = TokenManager(
             add_mask_token=True,
@@ -165,10 +170,13 @@ class ConditionalTrainer(BaseTrainer):
         # Use indices sampling collate function for performance optimization
         # This moves CPU-bound indices sampling from main process to DataLoader workers,
         # achieving 2-4x speedup by parallelizing CPU work (GPU no longer waits for CPU)
-        logger.info("Using indices sampling collate function (parallel indices sampling)")
+        use_attention_mask = getattr(self.args, 'use_attention_mask_for_valid', True)
+        logger.info(f"Using indices sampling collate function (parallel indices sampling)")
+        logger.info(f"  use_attention_mask_for_valid: {use_attention_mask}")
         train_collate_fn = create_indices_sampling_collate_fn(
             augmenter=self.augmenter,
-            pad_token_id=self.tokenizer.pad_token_id
+            pad_token_id=self.tokenizer.pad_token_id,
+            use_attention_mask_for_valid=use_attention_mask
         )
 
         self.train_loader = get_dataloader(

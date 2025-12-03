@@ -494,14 +494,19 @@ class IndicesSamplingCollateFn:
     Implemented as a class to be picklable for multiprocessing in DataLoader.
     """
 
-    def __init__(self, augmenter, pad_token_id=50256):
+    def __init__(self, augmenter, pad_token_id=50256, use_attention_mask_for_valid=True):
         """
         Args:
             augmenter: ConditionalAugmenter instance with split_indices() method
             pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
+            use_attention_mask_for_valid: If True (default, new behavior), use attention_mask
+                to determine valid positions. If False (old behavior), use pad_token_id
+                to exclude positions. The old behavior incorrectly excludes EOS tokens
+                since GPT-2's pad_token_id == eos_token_id == 50256.
         """
         self.augmenter = augmenter
         self.pad_token_id = pad_token_id
+        self.use_attention_mask_for_valid = use_attention_mask_for_valid
 
     def __call__(self, batch):
         """
@@ -529,12 +534,18 @@ class IndicesSamplingCollateFn:
         for item in batch:
             input_ids = item['input_ids']
             seq_len = input_ids.size(0)
+            attention_mask = item['attention_mask']
 
             # Find valid (non-padding) positions
-            valid_positions = [
-                i for i in range(seq_len)
-                if input_ids[i] != self.pad_token_id
-            ]
+            if self.use_attention_mask_for_valid:
+                # New behavior: use attention_mask (includes EOS tokens)
+                valid_positions = [i for i in range(seq_len) if attention_mask[i] == 1]
+            else:
+                # Old behavior: use pad_token_id (excludes EOS tokens incorrectly)
+                valid_positions = [
+                    i for i in range(seq_len)
+                    if input_ids[i] != self.pad_token_id
+                ]
 
             # Sample indices using augmenter
             cond_idx, eval_idx, unseen_idx = self.augmenter.split_indices(
@@ -587,7 +598,7 @@ class IndicesSamplingCollateFn:
         }
 
 
-def create_indices_sampling_collate_fn(augmenter, pad_token_id=50256):
+def create_indices_sampling_collate_fn(augmenter, pad_token_id=50256, use_attention_mask_for_valid=True):
     """
     Create collate function that samples indices in parallel DataLoader workers
 
@@ -599,11 +610,13 @@ def create_indices_sampling_collate_fn(augmenter, pad_token_id=50256):
     Args:
         augmenter: ConditionalAugmenter instance
         pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
+        use_attention_mask_for_valid: If True (default), use attention_mask to determine
+            valid positions. If False, use pad_token_id (old buggy behavior).
 
     Returns:
         IndicesSamplingCollateFn instance (picklable for multiprocessing)
     """
-    return IndicesSamplingCollateFn(augmenter, pad_token_id)
+    return IndicesSamplingCollateFn(augmenter, pad_token_id, use_attention_mask_for_valid)
 
 
 class AugmentCollateFn:
@@ -733,6 +746,30 @@ def create_augment_collate_fn(augmenter, device='cpu'):
     return AugmentCollateFn(augmenter, device)
 
 
+def worker_init_fn(worker_id):
+    """
+    Initialize random seed for each DataLoader worker
+
+    This ensures that each worker process has a different random seed,
+    preventing duplicated sampling in multiprocessing mode while still
+    maintaining reproducibility.
+
+    The worker seed is derived from PyTorch's initial seed (which is set
+    by torch.manual_seed in the main process), combined with the worker ID.
+
+    Args:
+        worker_id: Worker process ID (0 to num_workers-1)
+    """
+    import numpy as np
+    import random
+    import torch
+
+    # Get the initial seed from PyTorch (set in main process)
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 def get_dataloader(
     config,
     split="train",
@@ -812,7 +849,8 @@ def get_dataloader(
             shuffle=(split == "train"),
             num_workers=num_workers,
             pin_memory=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
+            worker_init_fn=worker_init_fn  # Ensure reproducible worker seeds
         )
 
         return dataloader
