@@ -56,14 +56,14 @@ GRAD_ACCUM=16
 NUM_SAMPLES=1000000
 EVAL_SAMPLES=10000
 LEARNING_RATE=5e-4
-NUM_EPOCHS=5
+NUM_EPOCHS=20
 WEIGHT_DECAY=0.1
 
 echo "Configuration:"
 echo "  Model: $MODEL_CONFIG (81.9M params)"
 echo "  Train Samples: $NUM_SAMPLES"
 echo "  Eval Samples: $EVAL_SAMPLES"
-echo "  Epochs: $NUM_EPOCHS (or until convergence)"
+echo "  Epochs: $NUM_EPOCHS (full training, no early stopping)"
 echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
 echo "  Learning Rate: $LEARNING_RATE"
 echo "  Weight Decay: $WEIGHT_DECAY"
@@ -73,7 +73,7 @@ echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
 echo ""
 echo "  ** Eval Steps: 100 (5x more frequent) **"
-echo "  ** Early Stopping Patience: 5 **"
+echo "  ** Early Stopping: DISABLED (patience=0) **"
 echo "========================================="
 
 # Using unified train.py pipeline (train_sigmagpt.py is deprecated)
@@ -109,7 +109,7 @@ python3 ./train.py \
     --logging_steps 10 \
     --eval_steps 100 \
     --save_steps 1000 \
-    --early_stopping_patience 5 \
+    --early_stopping_patience 0 \
     --do_eval \
     --max_eval_batches 10 \
     --output_dir ./experiments \
