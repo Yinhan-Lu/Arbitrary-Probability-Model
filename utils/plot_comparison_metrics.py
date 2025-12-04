@@ -40,6 +40,15 @@ COMPARISON_COLORS = [
 
 LINE_STYLES = ['-', '--', '-.', ':']
 
+# Descriptive mode titles
+MODE_TITLES = {
+    1: 'Mode 1: Autoregressive',
+    2: 'Mode 2: Filling In',
+    3: 'Mode 3: Training Distribution',
+    4: 'Mode 4: Mode 2 Eval Set with Mode 1 Logits',
+    5: 'Mode 5: Mode 3 Eval Set with Mode 1 Logits',
+}
+
 
 def extract_label(exp_name):
     """Remove timestamp suffix from experiment name.
@@ -226,7 +235,8 @@ def compare_mode_loss(experiments_data, mode_num, output_dir):
 
     plt.xlabel('Step', fontsize=12)
     plt.ylabel('Loss', fontsize=12)
-    plt.title(f'Mode {mode_num} Loss Comparison', fontsize=14, fontweight='bold')
+    mode_title = MODE_TITLES.get(mode_num, f'Mode {mode_num}')
+    plt.title(f'{mode_title} Loss Comparison', fontsize=14, fontweight='bold')
     plt.legend(loc='upper right', fontsize=10, framealpha=0.9)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -264,7 +274,8 @@ def compare_mode_perplexity(experiments_data, mode_num, output_dir):
 
     plt.xlabel('Step', fontsize=12)
     plt.ylabel('Perplexity', fontsize=12)
-    plt.title(f'Mode {mode_num} Perplexity Comparison', fontsize=14, fontweight='bold')
+    mode_title = MODE_TITLES.get(mode_num, f'Mode {mode_num}')
+    plt.title(f'{mode_title} Perplexity Comparison', fontsize=14, fontweight='bold')
     plt.legend(loc='upper right', fontsize=10, framealpha=0.9)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
