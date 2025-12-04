@@ -77,11 +77,15 @@ def load_experiment_data(exp_dir):
     return df, exp_name, label
 
 
+MARKERS = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'X', 'P']
+
+
 def get_style(index):
-    """Get color and line style for experiment index."""
+    """Get color, line style, and marker for experiment index."""
     color = COMPARISON_COLORS[index % len(COMPARISON_COLORS)]
     linestyle = LINE_STYLES[index // len(COMPARISON_COLORS) % len(LINE_STYLES)]
-    return color, linestyle
+    marker = MARKERS[index % len(MARKERS)]
+    return color, linestyle, marker
 
 
 def compare_train_loss(experiments_data, output_dir):
@@ -97,10 +101,10 @@ def compare_train_loss(experiments_data, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data['train_loss'],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -134,10 +138,10 @@ def compare_train_perplexity(experiments_data, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data['train_perplexity'],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -171,10 +175,10 @@ def compare_learning_rate(experiments_data, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data['learning_rate'],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -210,10 +214,10 @@ def compare_mode_loss(experiments_data, mode_num, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data[loss_col],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -248,10 +252,10 @@ def compare_mode_perplexity(experiments_data, mode_num, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data[ppl_col],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -285,10 +289,10 @@ def compare_eval_loss(experiments_data, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data['eval_loss'],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -322,10 +326,10 @@ def compare_eval_perplexity(experiments_data, output_dir):
             continue
 
         has_data = True
-        color, linestyle = get_style(i)
+        color, linestyle, marker = get_style(i)
         plt.plot(data['step'], data['eval_perplexity'],
                 linewidth=2, color=color, linestyle=linestyle,
-                alpha=0.8, label=label)
+                marker=marker, markersize=3, alpha=0.7, label=label)
 
     if not has_data:
         plt.close()
@@ -484,8 +488,8 @@ def plot_all_comparisons(exp_dirs, output_base_dir=None):
 
     print(f"\nExperiments compared: {len(experiments_data)}")
     for i, (df, exp_name, label) in enumerate(experiments_data):
-        color, _ = get_style(i)
-        print(f"  [{i+1}] {label} (color: {color})")
+        color, _, marker = get_style(i)
+        print(f"  [{i+1}] {label} (color: {color}, marker: {marker})")
 
     print(f"\nPlots generated: {len(plots_generated)}")
     for plot_name in plots_generated:
