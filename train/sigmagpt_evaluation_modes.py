@@ -117,6 +117,7 @@ def sigmagpt_evaluate_mode1_autoregressive(model, dataloader, device, max_batche
     total_tokens = 0
     all_logits = []
     all_labels = []
+    all_attention_masks = []
     num_batches = 0
 
     with torch.no_grad():
@@ -125,6 +126,7 @@ def sigmagpt_evaluate_mode1_autoregressive(model, dataloader, device, max_batche
                 break
 
             input_ids = batch['input_ids'].to(device)
+            attention_mask = batch.get('attention_mask', torch.ones_like(input_ids))
             batch_size, seq_len = input_ids.shape
 
             # Create autoregressive order for each sample
@@ -153,6 +155,7 @@ def sigmagpt_evaluate_mode1_autoregressive(model, dataloader, device, max_batche
             # Store for Mode 4/5 (CPU, half precision to save memory)
             all_logits.append(logits.cpu().half())
             all_labels.append(input_ids.cpu())
+            all_attention_masks.append(attention_mask.cpu())
             del logits
             torch.cuda.empty_cache()
 
@@ -166,6 +169,7 @@ def sigmagpt_evaluate_mode1_autoregressive(model, dataloader, device, max_batche
         'total_tokens': total_tokens,
         'logits_list': all_logits,
         'labels_list': all_labels,
+        'attention_mask_list': all_attention_masks,
     }
 
 
@@ -340,7 +344,7 @@ def sigmagpt_evaluate_mode3_training_dist(model, dataloader, device, augmenter, 
     }
 
 
-def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
+def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list, attention_mask_list):
     """
     Mode 4: Autoregressive evaluation on Mode 2's evaluation positions
 
@@ -351,6 +355,7 @@ def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indice
         logits_list: List of logits from Mode 1
         labels_list: List of labels from Mode 1
         eval_indices_list: Flat list of evaluation indices from Mode 2
+        attention_mask_list: List of attention masks from Mode 1 for padding filtering
 
     Returns:
         dict with keys: loss, perplexity
@@ -360,7 +365,7 @@ def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indice
 
     # Flatten index into batches
     sample_idx = 0
-    for logits_batch, labels_batch in zip(logits_list, labels_list):
+    for logits_batch, labels_batch, attention_mask_batch in zip(logits_list, labels_list, attention_mask_list):
         batch_size = logits_batch.shape[0]
 
         for i in range(batch_size):
@@ -369,6 +374,7 @@ def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indice
 
             logits = logits_batch[i]  # (seq_len, vocab_size)
             labels = labels_batch[i]  # (seq_len,)
+            attention_mask = attention_mask_batch[i]  # (seq_len,)
             eval_indices = eval_indices_list[sample_idx]
 
             # Autoregressive: shift for next-token prediction
@@ -382,9 +388,10 @@ def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indice
                 if 0 <= eval_pos - 1 < eval_mask.shape[0]:
                     eval_mask[eval_pos - 1] = True
 
-            # Filter out padding tokens
-            pad_token_id = 50256  # GPT-2 padding
-            non_padding_mask = (shift_labels != pad_token_id)
+            # Filter out padding tokens using attention_mask (not token ID)
+            # This correctly includes EOS tokens (50256) which are valid content tokens
+            attention_mask_shifted = attention_mask[1:]  # Shift to match labels
+            non_padding_mask = (attention_mask_shifted == 1)
             valid_mask = eval_mask & non_padding_mask
 
             if valid_mask.sum() > 0:
@@ -408,7 +415,7 @@ def sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indice
     }
 
 
-def sigmagpt_evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
+def sigmagpt_evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list, attention_mask_list):
     """
     Mode 5: Autoregressive evaluation on Mode 3's evaluation positions
 
@@ -419,12 +426,13 @@ def sigmagpt_evaluate_mode5_cross_training(logits_list, labels_list, eval_indice
         logits_list: List of logits from Mode 1
         labels_list: List of labels from Mode 1
         eval_indices_list: Flat list of evaluation indices from Mode 3
+        attention_mask_list: List of attention masks from Mode 1 for padding filtering
 
     Returns:
         dict with keys: loss, perplexity
     """
     # Implementation is identical to Mode 4, just uses different indices
-    return sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list)
+    return sigmagpt_evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list, attention_mask_list)
 
 
 def sigmagpt_evaluate_all_modes(model, dataloader, device, augmenter, adapter, max_batches=None,
@@ -474,7 +482,8 @@ def sigmagpt_evaluate_all_modes(model, dataloader, device, augmenter, adapter, m
     metrics_mode4 = sigmagpt_evaluate_mode4_cross_boundary(
         metrics_mode1['logits_list'],
         metrics_mode1['labels_list'],
-        metrics_mode2['eval_indices_list']
+        metrics_mode2['eval_indices_list'],
+        metrics_mode1['attention_mask_list']
     )
 
     # Mode 5: Cross-training (reuse Mode 1 logits)
@@ -482,7 +491,8 @@ def sigmagpt_evaluate_all_modes(model, dataloader, device, augmenter, adapter, m
     metrics_mode5 = sigmagpt_evaluate_mode5_cross_training(
         metrics_mode1['logits_list'],
         metrics_mode1['labels_list'],
-        metrics_mode3['eval_indices_list']
+        metrics_mode3['eval_indices_list'],
+        metrics_mode1['attention_mask_list']
     )
 
     # Aggregate results
