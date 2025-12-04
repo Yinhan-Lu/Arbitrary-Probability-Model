@@ -92,7 +92,7 @@ python3 ./train.py \
     --adam_beta2 0.999 \
     --sigmagpt_mode fair \
     --ordering_mode random_scramble \
-    --cond_pct_min 0.0 \
+    --cond_pct_min 0.2 \
     --cond_pct_max 0.4 \
     --eval_pct_min 1.0 \
     --eval_pct_max 1.0 \
