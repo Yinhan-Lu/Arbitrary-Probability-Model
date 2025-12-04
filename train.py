@@ -256,7 +256,7 @@ def parse_args():
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
+        default=39,
         help="Random seed for reproducibility"
     )
 
