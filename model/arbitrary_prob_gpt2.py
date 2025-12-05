@@ -340,8 +340,12 @@ class GPT2Model(nn.Module):
         Create prefix conditional attention mask
 
         Structure:
-        - Conditioning rows: Can attend to all positions (fully visible)
+        - Conditioning rows: Can only attend to conditioning (NOT body)
         - Sequence rows: Can attend to all conditioning + causal sequence
+
+        This prevents information leakage where prefix tokens could "spy" on
+        body tokens (including eval tokens with true values) and relay that
+        information back to body tokens in subsequent layers.
 
         Args:
             N_cond: Number of conditioning tokens
@@ -352,8 +356,12 @@ class GPT2Model(nn.Module):
             mask: (N_cond + N_seq, N_cond + N_seq)
                   1 = can attend, 0 = cannot attend
         """
-        # Conditioning rows: Fully visible (can attend to all)
-        cond_rows = torch.ones(N_cond, N_cond + N_seq, device=device, dtype=torch.uint8)
+        # Conditioning rows: Can only attend to conditioning prefix (NOT body)
+        # This prevents leakage: prefix cannot see eval tokens in body
+        cond_rows = torch.cat([
+            torch.ones(N_cond, N_cond, device=device, dtype=torch.uint8),
+            torch.zeros(N_cond, N_seq, device=device, dtype=torch.uint8)
+        ], dim=1)
 
         # Sequence rows: Conditioning visible + causal sequence
         cond_visible = torch.ones(N_seq, N_cond, device=device, dtype=torch.uint8)
