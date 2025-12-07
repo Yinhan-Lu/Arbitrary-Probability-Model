@@ -225,7 +225,7 @@ class ConditionalTrainer(BaseTrainer):
                 - unseen_idx: List[List[int]] (pre-sampled)
 
         Returns:
-            loss: Raw training loss (scaling handled in base_trainer.train())
+            loss: Training loss (scaled by gradient_accumulation_steps)
         """
         # Extract data from batch (indices already sampled in workers!)
         input_ids = batch["input_ids"].to(self.device)  # (B, L)

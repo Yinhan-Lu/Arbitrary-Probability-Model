@@ -92,8 +92,8 @@ python3 ./train.py \
     --adam_beta1 0.9 \
     --adam_beta2 0.999 \
     --adam_epsilon 1e-8 \
-    --cond_pct_min 0.4 \
-    --cond_pct_max 0.7 \
+    --cond_pct_min 0.0 \
+    --cond_pct_max 0.4 \
     --eval_pct_min 1.0 \
     --eval_pct_max 1.0 \
     --conditioning_sampling blockwise \
