@@ -93,6 +93,8 @@ class DistilBertTrainer(BaseTrainer):
         else:
             self.val_loader = None
 
+        # Import blockwise sampling functions (matching conditional/sigmagpt trainers)
+        from functools import partial
         from train.blockwise_sampling import (
             uniform_num_conditioning_distribution,
             uniform_num_blocks_distribution,
@@ -101,30 +103,41 @@ class DistilBertTrainer(BaseTrainer):
             generate_conditioning_evaluation_sets_blockwise
         )
 
+        # Create distribution functions (matching conditional trainer pattern)
+        logger.info("Creating augmenter with distribution-based sampling")
+        logger.info(f"  Conditioning percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
+        logger.info(f"  Evaluation percentage range: [{self.args.cond_pct_min}, {self.args.cond_pct_max}]")
+        
+        num_cond_dist = partial(
+            uniform_num_conditioning_distribution,
+            conditioning_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
+        )
+        num_eval_dist = partial(
+            uniform_num_evaluation_distribution,
+            evaluation_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
+        )
+
         class SimpleAugmenter:
-            def __init__(self, cond_pct_min, cond_pct_max):
-                self.cond_pct_min = cond_pct_min
-                self.cond_pct_max = cond_pct_max
+            """Simple augmenter wrapper for BERT evaluation modes"""
+            def __init__(self, num_cond_dist, num_eval_dist):
+                self.num_cond_dist = num_cond_dist
+                self.num_eval_dist = num_eval_dist
 
             def split_indices(self, seq_len, valid_positions=None):
                 return generate_conditioning_evaluation_sets_blockwise(
                     seq_len=seq_len,
-                    num_conditioning_distribution=lambda l: uniform_num_conditioning_distribution(
-                        l, (self.cond_pct_min, self.cond_pct_max)
-                    ),
+                    num_conditioning_distribution=self.num_cond_dist,
                     num_blocks_distribution=uniform_num_blocks_distribution,
                     block_sizes_distribution=uniform_block_sizes_distribution,
-                    num_evaluation_distribution=lambda l: uniform_num_evaluation_distribution(
-                        l, (self.cond_pct_min, self.cond_pct_max)
-                    ),
+                    num_evaluation_distribution=self.num_eval_dist,
                     num_eval_blocks_distribution=uniform_num_blocks_distribution,
                     eval_block_sizes_distribution=uniform_block_sizes_distribution,
                     valid_positions=valid_positions,
                 )
 
         self.augmenter = SimpleAugmenter(
-            cond_pct_min=self.args.cond_pct_min,
-            cond_pct_max=self.args.cond_pct_max,
+            num_cond_dist=num_cond_dist,
+            num_eval_dist=num_eval_dist,
         )
 
 
@@ -173,87 +186,104 @@ class DistilBertTrainer(BaseTrainer):
             trainer_args=self.args,
         )
 
-        # Mode 1 is the “main” loss (for BaseTrainer)
+        # Mode 1 is the "main" loss (for BaseTrainer)
         metrics["loss"] = metrics["mode1_loss"]
         metrics["perplexity"] = metrics["mode1_ppl"]
 
-        logger.info(f"Mode 1 (MLM baseline): loss={metrics['mode1_loss']:.4f}, ppl={metrics['mode1_ppl']:.2f}")
-        logger.info(f"Mode 2 (Boundary):      loss={metrics['mode2_loss']:.4f}, ppl={metrics['mode2_ppl']:.2f}")
-        logger.info(f"Mode 3 (Train dist):    loss={metrics['mode3_loss']:.4f}, ppl={metrics['mode3_ppl']:.2f}")
+        logger.info(f"Mode 1 (MLM baseline):        loss={metrics['mode1_loss']:.4f}, ppl={metrics['mode1_ppl']:.2f}")
+        logger.info(f"Mode 2 (Boundary iter):       loss={metrics['mode2_loss']:.4f}, ppl={metrics['mode2_ppl']:.2f}")
+        logger.info(f"Mode 3 (Train dist iter):     loss={metrics['mode3_loss']:.4f}, ppl={metrics['mode3_ppl']:.2f}")
+        logger.info(f"Mode 4 (Boundary parallel):   loss={metrics['mode4_loss']:.4f}, ppl={metrics['mode4_ppl']:.2f}")
+        logger.info(f"Mode 5 (Train dist parallel): loss={metrics['mode5_loss']:.4f}, ppl={metrics['mode5_ppl']:.2f}")
 
         return metrics
 
 
     def get_csv_header(self):
+        """
+        Get CSV header for logging
+        
+        Format matches conditional/sigmagpt models for fair comparison:
+        - step, epoch
+        - train_loss, train_perplexity
+        - mode1_loss, mode1_ppl, ..., mode5_loss, mode5_ppl
+        - learning_rate
+        """
         return [
-            "step", "epoch", "split",
-            # generic
-            "loss", "perplexity",
-            "learning_rate", "grad_norm",
-            "tokens_per_second", "time_elapsed_seconds",
-            # BERT 5-mode-specific metrics
-            "mode1_loss", "mode1_ppl",
-            "mode2_loss", "mode2_ppl",
-            "mode3_loss", "mode3_ppl",
-            "mode4_loss", "mode4_ppl",
-            "mode5_loss", "mode5_ppl",
+            "step",
+            "epoch",
+            "train_loss",
+            "train_perplexity",
+            "mode1_loss",
+            "mode1_ppl",
+            "mode2_loss",
+            "mode2_ppl",
+            "mode3_loss",
+            "mode3_ppl",
+            "mode4_loss",
+            "mode4_ppl",
+            "mode5_loss",
+            "mode5_ppl",
+            "learning_rate"
         ]
 
-
-    def format_train_metrics(self, avg_loss, perplexity, lr, **extra):
+    def format_train_metrics(self, avg_loss, perplexity, lr):
         """
-        Called by BaseTrainer as: format_train_metrics(avg_loss, perplexity, lr)
-
-        avg_loss: *real* MLM loss (already averaged over logging window)
-        perplexity: exp(avg_loss)
-        lr: learning rate
+        Format training metrics for CSV logging
+        
+        During training step, eval metrics are empty.
+        Matches conditional model's 5-mode format for fair comparison.
+        
+        Args:
+            avg_loss: Average training loss
+            perplexity: Training perplexity
+            lr: Current learning rate
+            
+        Returns:
+            dict: Metrics dictionary with empty eval columns (filled during evaluation)
         """
-        row = {
-            "split": "train",
-            "loss": float(avg_loss),
-            "perplexity": float(perplexity),
-            "learning_rate": float(lr),
-            "grad_norm": extra.get("grad_norm"),
-            "tokens_per_second": extra.get("tokens_per_second"),
-            "time_elapsed_seconds": extra.get("time_elapsed_seconds"),
-        }
-        row.update(extra)
-        return row
-
-    def format_eval_metrics(self, eval_results, **extra):
-        """
-        Called by BaseTrainer as: format_eval_metrics(eval_results)
-
-        eval_results is whatever `evaluate()` returns, including:
-        - loss, perplexity
-        - mode1_loss, mode1_ppl (to mode5_loss, mode5_ppl)
-        """
-        loss = eval_results.get("loss")
-        perplexity = eval_results.get("perplexity")
-
-        row = {
-            "split": "val",
-            "loss": float(loss) if loss is not None else None,
-            "perplexity": float(perplexity) if perplexity is not None else None,
-            "learning_rate": self.optimizer.param_groups[0]["lr"]
-                              if hasattr(self, "optimizer") else None,
-            "grad_norm": None,
-            "tokens_per_second": None,
-            "time_elapsed_seconds": None,
-
-            # All 5 mode-specific metrics (important for plotting!)
-            "mode1_loss": eval_results.get("mode1_loss"),
-            "mode1_ppl": eval_results.get("mode1_ppl"),
-            "mode2_loss": eval_results.get("mode2_loss"),
-            "mode2_ppl": eval_results.get("mode2_ppl"),
-            "mode3_loss": eval_results.get("mode3_loss"),
-            "mode3_ppl": eval_results.get("mode3_ppl"),
-            "mode4_loss": eval_results.get("mode4_loss"),
-            "mode4_ppl": eval_results.get("mode4_ppl"),
-            "mode5_loss": eval_results.get("mode5_loss"),
-            "mode5_ppl": eval_results.get("mode5_ppl"),
+        return {
+            'train_loss': avg_loss,
+            'train_perplexity': perplexity,
+            'mode1_loss': '',
+            'mode1_ppl': '',
+            'mode2_loss': '',
+            'mode2_ppl': '',
+            'mode3_loss': '',
+            'mode3_ppl': '',
+            'mode4_loss': '',
+            'mode4_ppl': '',
+            'mode5_loss': '',
+            'mode5_ppl': '',
+            'learning_rate': lr
         }
 
-        row.update(extra)
-        return row
+    def format_eval_metrics(self, eval_results):
+        """
+        Format evaluation metrics for CSV logging
+        
+        During evaluation step, train metrics are empty.
+        Matches conditional model's 5-mode format for fair comparison.
+        
+        Args:
+            eval_results: Results from evaluate() containing all 5 modes
+            
+        Returns:
+            dict: Metrics dictionary with all 5 modes and learning rate
+        """
+        return {
+            'train_loss': '',
+            'train_perplexity': '',
+            'mode1_loss': eval_results['mode1_loss'],
+            'mode1_ppl': eval_results['mode1_ppl'],
+            'mode2_loss': eval_results['mode2_loss'],
+            'mode2_ppl': eval_results['mode2_ppl'],
+            'mode3_loss': eval_results['mode3_loss'],
+            'mode3_ppl': eval_results['mode3_ppl'],
+            'mode4_loss': eval_results['mode4_loss'],
+            'mode4_ppl': eval_results['mode4_ppl'],
+            'mode5_loss': eval_results['mode5_loss'],
+            'mode5_ppl': eval_results['mode5_ppl'],
+            'learning_rate': self.optimizer.param_groups[0]["lr"]
+        }
 
