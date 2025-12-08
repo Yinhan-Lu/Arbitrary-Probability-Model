@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cmp_cond
+#SBATCH --job-name=bugfix_old
 #SBATCH --output=logs/slurm_%j.out
 #SBATCH --error=logs/slurm_%j.err
 #SBATCH --time=1-00:00:00
@@ -9,13 +9,16 @@
 #SBATCH --ntasks=1
 
 # ==========================================================================
-# COMPARISON EXPERIMENT: Conditional Model
+# BUG FIX ABLATION: OLD BEHAVIOR (use pad_token_id for valid positions)
 # ==========================================================================
-# Part of 3-way comparison: Conditional vs Sigma GPT (Temporal) vs Sigma GPT (Scramble)
-# Uses deterministic evaluation splits for fair comparison
+# This experiment uses the OLD buggy behavior where valid_positions is
+# determined by pad_token_id, which incorrectly excludes EOS tokens.
+# This should result in Mode 2 being the BEST (due to train/eval mismatch).
 
 echo "========================================="
-echo "COMPARISON EXPERIMENT: Conditional Model"
+echo "BUG FIX ABLATION: OLD BEHAVIOR"
+echo "  valid_positions: using pad_token_id (excludes EOS)"
+echo "  Expected: Mode 2 = BEST"
 echo "========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
@@ -45,8 +48,8 @@ echo "Python: $(which python3)"
 echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
-# Training parameters (matching submit_conditional_moderate_cond.sh)
-EXP_NAME="comparison_conditional"
+# Training parameters
+EXP_NAME="bugfix_ablation_old"
 MODEL_CONFIG="distilgpt2"
 BATCH_SIZE=8
 GRAD_ACCUM=16
@@ -67,6 +70,8 @@ echo "  Weight Decay: $WEIGHT_DECAY"
 echo "  Conditioning: 0-40%"
 echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
+echo ""
+echo "  ** use_attention_mask_for_valid: FALSE (OLD BEHAVIOR) **"
 echo "========================================="
 
 python3 ./train.py \
@@ -85,8 +90,8 @@ python3 ./train.py \
     --adam_beta1 0.9 \
     --adam_beta2 0.999 \
     --adam_epsilon 1e-8 \
-    --cond_pct_min 0.4 \
-    --cond_pct_max 0.7 \
+    --cond_pct_min 0.0 \
+    --cond_pct_max 0.4 \
     --eval_pct_min 1.0 \
     --eval_pct_max 1.0 \
     --conditioning_sampling blockwise \
@@ -95,6 +100,7 @@ python3 ./train.py \
     --min_evaluation 1 \
     --mode2_boundary_cond_pct_min 0.1 \
     --mode2_boundary_cond_pct_max 0.3 \
+    --no_use_attention_mask_for_valid \
     --logging_steps 10 \
     --eval_steps 500 \
     --save_steps 1000 \

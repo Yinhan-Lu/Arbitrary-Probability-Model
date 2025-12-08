@@ -5,6 +5,7 @@ Supports loading metrics, configurations, and checkpoints from various experimen
 """
 
 import json
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
@@ -63,6 +64,10 @@ class ExperimentLoader:
             raise FileNotFoundError(f"Metrics file not found: {metrics_path}")
 
         self.metrics = pd.read_csv(metrics_path)
+
+        # Replace empty strings with NaN for proper handling
+        # This fixes plotting issues where eval rows have empty train_loss
+        self.metrics = self.metrics.replace('', np.nan)
 
         # Add derived columns if they don't exist
         self._add_derived_metrics()

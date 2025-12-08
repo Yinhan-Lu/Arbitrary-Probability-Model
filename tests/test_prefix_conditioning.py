@@ -17,8 +17,17 @@ import unittest
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from train.augmentation import ConditionalAugmenter
+from functools import partial
+from train.augmentation import (
+    ConditionalAugmenter,
+    uniform_num_conditioning_distribution,
+    uniform_num_evaluation_distribution
+)
 from train.mask_utils import create_prefix_conditional_mask
+from train.blockwise_sampling import (
+    uniform_num_blocks_distribution,
+    uniform_block_sizes_distribution
+)
 
 
 class TestPrefixConditioning(unittest.TestCase):
@@ -30,17 +39,32 @@ class TestPrefixConditioning(unittest.TestCase):
         self.bos_token_id = 50256   # [BOS] token
         self.pad_token_id = -100
 
-        # Create augmenter with fixed ratios for testing
+        # Create distribution functions for testing (using partial to pre-bind config)
+        num_cond_dist = partial(
+            uniform_num_conditioning_distribution,
+            conditioning_percentage_range=(0.2, 0.4)
+        )
+        num_eval_dist = partial(
+            uniform_num_evaluation_distribution,
+            evaluation_percentage_range=(0.2, 0.4)
+        )
+
+        # Create augmenter with distribution functions
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.mask_token_id,
             bos_token_id=self.bos_token_id,
             pad_token_id=self.pad_token_id,
-            conditioning_ratio=0.4,
-            evaluation_ratio=0.3,
+            num_conditioning_distribution=num_cond_dist,
+            num_evaluation_distribution=num_eval_dist,
+            num_blocks_distribution=uniform_num_blocks_distribution,
+            num_eval_blocks_distribution=uniform_num_blocks_distribution,
+            block_sizes_distribution=uniform_block_sizes_distribution,
+            eval_block_sizes_distribution=uniform_block_sizes_distribution,
             min_conditioning=1,
             min_evaluation=1,
             include_bos=True,
-            conditioning_sampling='random'
+            conditioning_sampling='blockwise',
+            evaluation_sampling='blockwise'
         )
 
     def test_mask_structure(self):
@@ -59,10 +83,15 @@ class TestPrefixConditioning(unittest.TestCase):
         self.assertEqual(mask.shape, expected_shape,
                         f"Mask shape should be {expected_shape}")
 
-        # Check conditioning rows (should see everything)
+        # Check conditioning rows (should only see conditioning, NOT body)
+        # This prevents information leakage through prefix
         for i in range(N_cond):
-            self.assertTrue(torch.all(mask[i, :] == 1),
-                           f"Conditioning row {i} should see all positions")
+            # Conditioning rows should see conditioning columns
+            self.assertTrue(torch.all(mask[i, :N_cond] == 1),
+                           f"Conditioning row {i} should see conditioning positions")
+            # Conditioning rows should NOT see sequence/body columns
+            self.assertTrue(torch.all(mask[i, N_cond:] == 0),
+                           f"Conditioning row {i} should NOT see body positions (leakage prevention)")
 
         # Check sequence rows (should see cond + causal seq)
         for i in range(N_seq):
@@ -85,7 +114,7 @@ class TestPrefixConditioning(unittest.TestCase):
                                    f"Causal mask violated at seq position ({i}, {j})")
 
         print(f"✓ Mask structure correct: {mask.shape}")
-        print(f"  - Conditioning rows: fully visible")
+        print(f"  - Conditioning rows: only see conditioning (NOT body)")
         print(f"  - Sequence rows: cond visible + causal")
 
     def test_labels_only_evaluation(self):

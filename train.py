@@ -235,6 +235,12 @@ def parse_args():
         help="Save checkpoint every N steps"
     )
     parser.add_argument(
+        "--early_stopping_patience",
+        type=int,
+        default=0,
+        help="Number of evaluations without improvement before stopping. 0 = disabled"
+    )
+    parser.add_argument(
         "--max_eval_batches",
         type=int,
         default=100,
@@ -369,6 +375,21 @@ def parse_args():
             help="Maximum conditioning percentage for Mode 2 boundary evaluation"
         )
 
+        # Bug fix ablation switch
+        parser.add_argument(
+            "--use_attention_mask_for_valid",
+            action="store_true",
+            default=True,
+            help="Use attention_mask to determine valid positions (new correct behavior). "
+                 "If False, use pad_token_id (old buggy behavior that excludes EOS tokens)."
+        )
+        parser.add_argument(
+            "--no_use_attention_mask_for_valid",
+            dest="use_attention_mask_for_valid",
+            action="store_false",
+            help="Use pad_token_id to determine valid positions (old buggy behavior)"
+        )
+
     elif args.model_type == "baseline":
         # Baseline model specific arguments
         parser.add_argument(
@@ -402,6 +423,20 @@ def parse_args():
             default="fair",
             choices=["fair", "full"],
             help="Sigma GPT training mode: 'fair' (~40%% learning) or 'full' (100%% learning)"
+        )
+        parser.add_argument(
+            "--sigmagpt_arch",
+            type=str,
+            default="new",
+            choices=["new", "old"],
+            help="Sigma GPT architecture: 'new' (from baseline) or 'old' (double position encoding from paper)"
+        )
+        parser.add_argument(
+            "--sigmagpt_eval_mode",
+            type=str,
+            default="autoregressive",
+            choices=["autoregressive", "training_dist"],
+            help="Evaluation mode: 'autoregressive' (paper's left-to-right) or 'training_dist' (same as training)"
         )
         parser.add_argument(
             "--ordering_mode",
@@ -460,6 +495,19 @@ def parse_args():
             type=float,
             default=1.0,
             help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)"
+        )
+        # Mode 2 (Boundary filling) evaluation parameters
+        parser.add_argument(
+            "--mode2_boundary_cond_pct_min",
+            type=float,
+            default=0.1,
+            help="Minimum conditioning percentage for Mode 2 boundary evaluation"
+        )
+        parser.add_argument(
+            "--mode2_boundary_cond_pct_max",
+            type=float,
+            default=0.3,
+            help="Maximum conditioning percentage for Mode 2 boundary evaluation"
         )
         parser.add_argument(
             "--streaming",

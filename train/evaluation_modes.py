@@ -49,6 +49,7 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
     total_tokens = 0
     all_logits = []
     all_labels = []
+    all_attention_masks = []  # Store attention masks for Mode 4/5
     num_batches = 0
 
     with torch.no_grad():
@@ -96,6 +97,7 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
             # Convert to float16 to save memory (31GB → 15.5GB)
             all_logits.append(logits.cpu().half())
             all_labels.append(input_ids.cpu())
+            all_attention_masks.append(attention_mask_1d.cpu())  # Store attention mask for Mode 4/5
             del logits, input_ids  # Free GPU memory
             torch.cuda.empty_cache()  # Clear cache
 
@@ -109,6 +111,7 @@ def evaluate_mode1_autoregressive(model, dataloader, device, max_batches=None):
         'total_tokens': total_tokens,
         'logits_list': all_logits,
         'labels_list': all_labels,
+        'attention_mask_list': all_attention_masks,  # For Mode 4/5 padding filtering
     }
 
 
@@ -299,7 +302,7 @@ def evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batch
     }
 
 
-def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
+def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list, attention_mask_list):
     """
     Mode 4: Autoregressive evaluation on Mode 2's evaluation set
 
@@ -310,6 +313,7 @@ def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
         logits_list: List of logits from Mode 1 [batch_size, seq_len, vocab_size]
         labels_list: List of labels from Mode 1 [batch_size, seq_len]
         eval_indices_list: List of evaluation indices from Mode 2
+        attention_mask_list: List of attention masks from Mode 1 for padding filtering
 
     Returns:
         dict with keys: loss, perplexity
@@ -317,13 +321,14 @@ def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
     total_loss = 0.0
     total_tokens = 0
 
-    for logits_batch, labels_batch, eval_indices_batch in zip(logits_list, labels_list, eval_indices_list):
+    for logits_batch, labels_batch, eval_indices_batch, attention_mask_batch in zip(logits_list, labels_list, eval_indices_list, attention_mask_list):
         batch_size = logits_batch.shape[0]
 
         # Process each sample in batch
         for i in range(batch_size):
             logits = logits_batch[i]  # [seq_len, vocab_size]
             labels = labels_batch[i]  # [seq_len]
+            attention_mask = attention_mask_batch[i]  # [seq_len]
             eval_indices = eval_indices_batch[i] if isinstance(eval_indices_batch[0], list) else eval_indices_batch
 
             # Shift for next-token prediction
@@ -340,10 +345,12 @@ def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
                 if 0 <= eval_pos - 1 < eval_mask.shape[0]:
                     eval_mask[eval_pos - 1] = True
 
-            # Filter out padding tokens (padding token ID = 50256 for GPT-2)
-            # Only compute loss on non-padding evaluation tokens
-            padding_token_id = 50256
-            non_padding_mask = (shift_labels != padding_token_id)
+            # Filter out padding tokens using attention_mask (not token ID)
+            # This correctly includes EOS tokens (50256) which are valid content tokens
+            # Old buggy code: non_padding_mask = (shift_labels != 50256)
+            # This excluded EOS tokens since GPT-2's pad_token_id == eos_token_id == 50256
+            attention_mask_shifted = attention_mask[1:]  # Shift to match labels
+            non_padding_mask = (attention_mask_shifted == 1)
             valid_mask = eval_mask & non_padding_mask
 
             if valid_mask.sum() > 0:
@@ -365,7 +372,7 @@ def evaluate_mode4_cross_boundary(logits_list, labels_list, eval_indices_list):
     }
 
 
-def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
+def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list, attention_mask_list):
     """
     Mode 5: Autoregressive evaluation on Mode 3's evaluation set
 
@@ -376,6 +383,7 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
         logits_list: List of logits from Mode 1 [batch_size, seq_len, vocab_size]
         labels_list: List of labels from Mode 1 [batch_size, seq_len]
         eval_indices_list: List of evaluation indices from Mode 3
+        attention_mask_list: List of attention masks from Mode 1 for padding filtering
 
     Returns:
         dict with keys: loss, perplexity
@@ -383,13 +391,14 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
     total_loss = 0.0
     total_tokens = 0
 
-    for logits_batch, labels_batch, eval_indices_batch in zip(logits_list, labels_list, eval_indices_list):
+    for logits_batch, labels_batch, eval_indices_batch, attention_mask_batch in zip(logits_list, labels_list, eval_indices_list, attention_mask_list):
         batch_size = logits_batch.shape[0]
 
         # Process each sample in batch
         for i in range(batch_size):
             logits = logits_batch[i]  # [seq_len, vocab_size]
             labels = labels_batch[i]  # [seq_len]
+            attention_mask = attention_mask_batch[i]  # [seq_len]
             eval_indices = eval_indices_batch[i] if isinstance(eval_indices_batch[0], list) else eval_indices_batch
 
             # Shift for next-token prediction
@@ -402,10 +411,12 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list):
                 if 0 <= eval_pos - 1 < eval_mask.shape[0]:
                     eval_mask[eval_pos - 1] = True
 
-            # Filter out padding tokens (padding token ID = 50256 for GPT-2)
-            # Only compute loss on non-padding evaluation tokens
-            padding_token_id = 50256
-            non_padding_mask = (shift_labels != padding_token_id)
+            # Filter out padding tokens using attention_mask (not token ID)
+            # This correctly includes EOS tokens (50256) which are valid content tokens
+            # Old buggy code: non_padding_mask = (shift_labels != 50256)
+            # This excluded EOS tokens since GPT-2's pad_token_id == eos_token_id == 50256
+            attention_mask_shifted = attention_mask[1:]  # Shift to match labels
+            non_padding_mask = (attention_mask_shifted == 1)
             valid_mask = eval_mask & non_padding_mask
 
             if valid_mask.sum() > 0:
@@ -474,7 +485,8 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, t
     metrics_mode4 = evaluate_mode4_cross_boundary(
         metrics_mode1['logits_list'],
         metrics_mode1['labels_list'],
-        eval_indices_mode2_grouped
+        eval_indices_mode2_grouped,
+        metrics_mode1['attention_mask_list']  # Pass attention_mask for correct padding filtering
     )
 
     # Mode 5: Cross-training (reuse Mode 1 logits)
@@ -487,7 +499,8 @@ def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, t
     metrics_mode5 = evaluate_mode5_cross_training(
         metrics_mode1['logits_list'],
         metrics_mode1['labels_list'],
-        eval_indices_mode3_grouped
+        eval_indices_mode3_grouped,
+        metrics_mode1['attention_mask_list']  # Pass attention_mask for correct padding filtering
     )
 
     # Aggregate results

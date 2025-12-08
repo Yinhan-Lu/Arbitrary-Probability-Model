@@ -170,10 +170,13 @@ class ConditionalTrainer(BaseTrainer):
         # Use indices sampling collate function for performance optimization
         # This moves CPU-bound indices sampling from main process to DataLoader workers,
         # achieving 2-4x speedup by parallelizing CPU work (GPU no longer waits for CPU)
-        logger.info("Using indices sampling collate function (parallel indices sampling)")
+        use_attention_mask = getattr(self.args, 'use_attention_mask_for_valid', True)
+        logger.info(f"Using indices sampling collate function (parallel indices sampling)")
+        logger.info(f"  use_attention_mask_for_valid: {use_attention_mask}")
         train_collate_fn = create_indices_sampling_collate_fn(
             augmenter=self.augmenter,
-            pad_token_id=self.tokenizer.pad_token_id
+            pad_token_id=self.tokenizer.pad_token_id,
+            use_attention_mask_for_valid=use_attention_mask
         )
 
         self.train_loader = get_dataloader(
@@ -238,9 +241,7 @@ class ConditionalTrainer(BaseTrainer):
             unseen_idx=batch_unseen_idx
         )
 
-        # Scale loss for gradient accumulation
-        loss = loss / self.args.gradient_accumulation_steps
-
+        # Loss scaling is now handled in base_trainer.py train() method
         return loss
 
     def evaluate(self):

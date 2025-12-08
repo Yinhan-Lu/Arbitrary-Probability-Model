@@ -181,7 +181,6 @@ slides/
 md_report/
 experiments/
 sigma-gpt/
-*_old.py
 result_of_two_pipeline/
 Updates-*.md
 Updates-*.docx
@@ -194,3 +193,4 @@ archive/
 
 # Plots (visualization outputs)
 plots/
+comparison_between_experiments/

@@ -280,8 +280,14 @@ def _generate_blockwise_set_from_positions(
         selected.extend(block)
         remaining -= len(block)
 
-        # Remove used segment
+        # Remove used slice from the chosen segment and keep the leftovers
         segments.remove(segment)
+        left = segment[: segment.index(block[0])] if block else []
+        right = segment[segment.index(block[-1]) + 1 :] if block else []
+        if left:
+            segments.append(left)
+        if right:
+            segments.append(right)
 
     return sorted(selected)
 

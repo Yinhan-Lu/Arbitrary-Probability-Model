@@ -87,6 +87,8 @@ class BaseTrainer(ABC):
         self.global_step = 0
         self.epoch = 0
         self.best_val_loss = float('inf')
+        self.patience_counter = 0
+        self.early_stop_triggered = False
 
         # Setup CSV logger
         self.csv_log_file = self.exp_dir / "logs" / "metrics.csv"
@@ -125,7 +127,7 @@ class BaseTrainer(ABC):
             batch: Batch of data from dataloader
 
         Returns:
-            loss: Training loss (already divided by gradient_accumulation_steps)
+            loss: Raw training loss (scaling handled in train() method)
         """
         pass
 
@@ -311,6 +313,7 @@ class BaseTrainer(ABC):
 
         self.model.train()
         running_loss = 0
+        running_batch_count = 0  # Track actual batch count for accurate averaging
         self.optimizer.zero_grad()
 
         for epoch in range(self.args.num_epochs):
@@ -320,18 +323,27 @@ class BaseTrainer(ABC):
             progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), desc=f"Epoch {epoch + 1}")
 
             for batch_idx, batch in progress_bar:
+                # Calculate accumulation flags FIRST (needed for loss scaling)
+                is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
+                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+
+                # Calculate actual number of accumulated batches for this step
+                # (handles partial accumulation at epoch boundaries)
+                if is_last_batch and not is_accum_step:
+                    num_accumulated = (batch_idx % self.args.gradient_accumulation_steps) + 1
+                else:
+                    num_accumulated = self.args.gradient_accumulation_steps
+
                 # Training step (model-specific implementation)
                 loss = self.train_step(batch)
 
-                # Backward pass
-                loss.backward()
+                # Scale loss by actual accumulated steps (HuggingFace standard)
+                scaled_loss = loss / num_accumulated
+                scaled_loss.backward()
 
-                # Accumulate loss for logging
-                running_loss += loss.item() * self.args.gradient_accumulation_steps
-
-                # Gradient accumulation
-                is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
-                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+                # Accumulate unscaled loss for logging
+                running_loss += loss.item()
+                running_batch_count += 1
 
                 if is_accum_step or is_last_batch:
                     # Gradient clipping
@@ -349,15 +361,17 @@ class BaseTrainer(ABC):
 
                     # Update progress bar
                     current_lr = self.optimizer.param_groups[0]['lr']
+                    avg_loss = running_loss / running_batch_count if running_batch_count > 0 else 0
                     progress_bar.set_postfix({
-                        'loss': f'{running_loss / (self.args.logging_steps * self.args.gradient_accumulation_steps):.4f}',
+                        'loss': f'{avg_loss:.4f}',
                         'lr': f'{current_lr:.2e}'
                     })
 
                     # Logging
                     if self.global_step % self.args.logging_steps == 0:
-                        self._log_training_metrics(running_loss)
+                        self._log_training_metrics(running_loss, running_batch_count)
                         running_loss = 0
+                        running_batch_count = 0
 
                     # Evaluation
                     if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
@@ -365,11 +379,21 @@ class BaseTrainer(ABC):
                         eval_results = self.evaluate()
                         self._log_evaluation_metrics(eval_results)
 
-                        # Save best model
+                        # Save best model and check early stopping
                         if eval_results["loss"] < self.best_val_loss:
                             self.best_val_loss = eval_results["loss"]
+                            self.patience_counter = 0
                             logger.info(f"New best validation loss: {self.best_val_loss:.4f}")
                             self._save_checkpoint("best_model")
+                        else:
+                            self.patience_counter += 1
+                            if self.args.early_stopping_patience > 0:
+                                logger.info(f"No improvement. Patience: {self.patience_counter}/{self.args.early_stopping_patience}")
+                                if self.patience_counter >= self.args.early_stopping_patience:
+                                    logger.info(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
+                                    self.early_stop_triggered = True
+                                    self._save_checkpoint("early_stopped_model")
+                                    return
 
                         self.model.train()
 
@@ -382,15 +406,16 @@ class BaseTrainer(ABC):
         self._save_checkpoint("final_model")
         logger.info(f"Final model saved to {self.checkpoint_dir / 'final_model.pt'}")
 
-    def _log_training_metrics(self, running_loss):
+    def _log_training_metrics(self, running_loss, running_batch_count):
         """
         Log training metrics
 
         Args:
             running_loss: Accumulated loss since last logging
+            running_batch_count: Number of batches processed since last logging
         """
         # Calculate average loss and perplexity
-        avg_loss = running_loss / (self.args.logging_steps * self.args.gradient_accumulation_steps)
+        avg_loss = running_loss / running_batch_count if running_batch_count > 0 else 0
         perplexity = torch.exp(torch.tensor(avg_loss)).item()
         lr = self.optimizer.param_groups[0]["lr"]
 

@@ -494,14 +494,19 @@ class IndicesSamplingCollateFn:
     Implemented as a class to be picklable for multiprocessing in DataLoader.
     """
 
-    def __init__(self, augmenter, pad_token_id=50256):
+    def __init__(self, augmenter, pad_token_id=50256, use_attention_mask_for_valid=True):
         """
         Args:
             augmenter: ConditionalAugmenter instance with split_indices() method
             pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
+            use_attention_mask_for_valid: If True (default, new behavior), use attention_mask
+                to determine valid positions. If False (old behavior), use pad_token_id
+                to exclude positions. The old behavior incorrectly excludes EOS tokens
+                since GPT-2's pad_token_id == eos_token_id == 50256.
         """
         self.augmenter = augmenter
         self.pad_token_id = pad_token_id
+        self.use_attention_mask_for_valid = use_attention_mask_for_valid
 
     def __call__(self, batch):
         """
@@ -532,7 +537,15 @@ class IndicesSamplingCollateFn:
             attention_mask = item['attention_mask']
 
             # Find valid (non-padding) positions
-            valid_positions = [i for i in range(seq_len) if attention_mask[i] == 1]
+            if self.use_attention_mask_for_valid:
+                # New behavior: use attention_mask (includes EOS tokens)
+                valid_positions = [i for i in range(seq_len) if attention_mask[i] == 1]
+            else:
+                # Old behavior: use pad_token_id (excludes EOS tokens incorrectly)
+                valid_positions = [
+                    i for i in range(seq_len)
+                    if input_ids[i] != self.pad_token_id
+                ]
 
             # Sample indices using augmenter
             cond_idx, eval_idx, unseen_idx = self.augmenter.split_indices(
@@ -585,7 +598,7 @@ class IndicesSamplingCollateFn:
         }
 
 
-def create_indices_sampling_collate_fn(augmenter, pad_token_id=50256):
+def create_indices_sampling_collate_fn(augmenter, pad_token_id=50256, use_attention_mask_for_valid=True):
     """
     Create collate function that samples indices in parallel DataLoader workers
 
@@ -597,11 +610,13 @@ def create_indices_sampling_collate_fn(augmenter, pad_token_id=50256):
     Args:
         augmenter: ConditionalAugmenter instance
         pad_token_id: Token ID to use for padding (default: 50256 for GPT-2)
+        use_attention_mask_for_valid: If True (default), use attention_mask to determine
+            valid positions. If False, use pad_token_id (old buggy behavior).
 
     Returns:
         IndicesSamplingCollateFn instance (picklable for multiprocessing)
     """
-    return IndicesSamplingCollateFn(augmenter, pad_token_id)
+    return IndicesSamplingCollateFn(augmenter, pad_token_id, use_attention_mask_for_valid)
 
 
 class AugmentCollateFn:

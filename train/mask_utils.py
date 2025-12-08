@@ -126,8 +126,12 @@ def create_prefix_conditional_mask(N_cond, N_seq, device='cpu'):
     This mask supports prefix conditioning where:
     - Conditioning tokens are placed at the beginning (prefix)
     - Sequence tokens follow (BOS + body)
-    - Conditioning tokens can attend to all positions
+    - Conditioning tokens can only attend to other conditioning tokens (NOT body)
     - Sequence tokens can attend to all conditioning + causal sequence
+
+    This prevents information leakage where prefix tokens could "spy" on
+    body tokens (including eval tokens with true values) and relay that
+    information back to body tokens in subsequent layers.
 
     Args:
         N_cond: Number of conditioning tokens in prefix
@@ -140,13 +144,13 @@ def create_prefix_conditional_mask(N_cond, N_seq, device='cpu'):
 
     Structure:
       [Cond][   Seq   ]
-    C [  1  ][   1    ]  <- Cond rows: fully visible
+    C [  1  ][   0    ]  <- Cond rows: only see prefix (NOT body)
     S [  1  ][ causal ]  <- Seq rows: cond visible + causal seq
 
     Example (N_cond=2, N_seq=6):
          [C  C  S  S  S  S  S  S]
-      C  [1  1  1  1  1  1  1  1]  <- Cond can see all
-      C  [1  1  1  1  1  1  1  1]
+      C  [1  1  0  0  0  0  0  0]  <- Cond can only see cond
+      C  [1  1  0  0  0  0  0  0]
       S  [1  1  1  0  0  0  0  0]  <- Seq can see cond + causal
       S  [1  1  1  1  0  0  0  0]
       S  [1  1  1  1  1  0  0  0]
@@ -154,8 +158,12 @@ def create_prefix_conditional_mask(N_cond, N_seq, device='cpu'):
       S  [1  1  1  1  1  1  1  0]
       S  [1  1  1  1  1  1  1  1]
     """
-    # Cond rows: fully visible (can attend to all conditioning + all sequence)
-    cond_rows = torch.ones(N_cond, N_cond + N_seq, device=device, dtype=torch.uint8)
+    # Cond rows: can only attend to conditioning prefix (NOT body)
+    # This prevents leakage: prefix cannot see eval tokens in body
+    cond_rows = torch.cat([
+        torch.ones(N_cond, N_cond, device=device, dtype=torch.uint8),
+        torch.zeros(N_cond, N_seq, device=device, dtype=torch.uint8)
+    ], dim=1)
 
     # Seq rows: cond visible + causal sequence
     # All sequence positions can attend to all conditioning positions
