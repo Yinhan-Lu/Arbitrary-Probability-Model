@@ -100,14 +100,80 @@ def debug_model_forward():
     evaluation_idx = [[3, 4]]  # Subset of unseen_idx
 
     with torch.no_grad():
-        output = model(
+        logits, loss = model(
             input_ids,
             conditional_idx=conditional_idx,
             evaluation_idx=evaluation_idx,
             unseen_idx=unseen_idx
         )
-        print(f"\nOutput logits shape: {output['logits'].shape}")
-        print(f"Loss: {output.get('loss', 'N/A')}")
+        print(f"\nOutput logits shape: {logits.shape}")
+        print(f"Loss: {loss}")
+
+
+def debug_model_forward_with_padding():
+    """Debug model forward pass with padding (batch_size=2, different cond lengths)."""
+    print("\n" + "=" * 60)
+    print("CONDITIONAL FORWARD WITH PADDING")
+    print("=" * 60)
+
+    # Setup
+    config = get_config("nano")
+    config.max_seq_len = 32
+    BOS_TOKEN_ID = 50256
+    MASK_TOKEN_ID = 50257
+
+    model = GPT2Model(config, mask_token_id=MASK_TOKEN_ID, bos_token_id=BOS_TOKEN_ID)
+    model.eval()
+
+    # Batch size = 2, different conditional lengths cause padding
+    batch_size = 2
+    input_ids = torch.randint(0, config.vocab_size, (batch_size, SEQ_LEN))
+
+    print(f"Batch size: {batch_size}")
+    print(f"Sample 0 tokens: {input_ids[0].tolist()}")
+    print(f"Sample 1 tokens: {input_ids[1].tolist()}")
+    print()
+
+    # Sample 0: 3 cond tokens → aug_len = 3 + 1 + 8 = 12
+    # Sample 1: 1 cond token  → aug_len = 1 + 1 + 8 = 10
+    # Sample 1 needs padding of 2
+    print("Sample 0: cond=[1,2,7] (3 tokens) → aug_len = 3 + 1 + 8 = 12")
+    print("Sample 1: cond=[3]     (1 token)  → aug_len = 1 + 1 + 8 = 10")
+    print("Sample 1 will be PADDED by 2 positions")
+
+    conditional_idx = [[1, 2, 7], [3]]
+    unseen_idx = [[0, 3, 4, 5, 6], [0, 1, 2, 4, 5, 6, 7]]
+    evaluation_idx = [[3, 4], [5, 6]]
+
+    # Manually call _augment_batch to get attention masks for visualization
+    print("\n--- Calling _augment_batch to get attention masks ---")
+    aug_input_ids, _, attention_mask, _ = model._augment_batch(
+        input_ids,
+        conditional_idx,
+        evaluation_idx,
+        unseen_idx,
+        device=input_ids.device
+    )
+    print(f"Augmented input_ids shape: {aug_input_ids.shape}")
+    print(f"Attention mask shape: {attention_mask.shape}")
+
+    # Visualize attention masks
+    print("\n--- Sample 0 Attention Mask (no padding, 12x12) ---")
+    visualize_mask(attention_mask[0, 0], "Sample 0")
+    print("\n--- Sample 1 Attention Mask (with padding, 12x12) ---")
+    print("(Last 2 rows/cols are padding)")
+    visualize_mask(attention_mask[1, 0], "Sample 1")
+
+    # Run forward to verify loss computation
+    with torch.no_grad():
+        logits, loss = model(
+            input_ids,
+            conditional_idx=conditional_idx,
+            evaluation_idx=evaluation_idx,
+            unseen_idx=unseen_idx
+        )
+        print(f"\nOutput logits shape: {logits.shape}")
+        print(f"Loss: {loss}")
 
 
 def debug_with_breakpoint():
@@ -141,8 +207,11 @@ if __name__ == "__main__":
     # Run visualization
     debug_masks()
 
-    # Run model forward pass
+    # Run model forward pass (no padding)
     debug_model_forward()
+
+    # Run model forward pass (with padding)
+    debug_model_forward_with_padding()
 
     # Optional: interactive debugging
     print("\n" + "-" * 40)
