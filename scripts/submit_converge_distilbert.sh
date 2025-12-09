@@ -63,7 +63,7 @@ echo "Configuration:"
 echo "  Model: $MODEL_CONFIG (66M params)"
 echo "  Train Samples: $NUM_SAMPLES"
 echo "  Eval Samples: $EVAL_SAMPLES"
-echo "  Epochs: $NUM_EPOCHS (full training, no early stopping)"
+echo "  Epochs: $NUM_EPOCHS (with early stopping)"
 echo "  Effective Batch Size: $((BATCH_SIZE * GRAD_ACCUM))"
 echo "  Learning Rate: $LEARNING_RATE"
 echo "  Weight Decay: $WEIGHT_DECAY"
@@ -73,7 +73,7 @@ echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
 echo ""
 echo "  ** Eval Steps: 100 (5x more frequent) **"
-echo "  ** Early Stopping: DISABLED (patience=0) **"
+echo "  ** Early Stopping: ENABLED (patience=5) **"
 echo "========================================="
 
 # Using unified train.py pipeline
@@ -107,7 +107,7 @@ python3 ./train.py \
     --logging_steps 10 \
     --eval_steps 100 \
     --save_steps 1000 \
-    --early_stopping_patience 0 \
+    --early_stopping_patience 5 \
     --do_eval \
     --max_eval_batches 10 \
     --output_dir ./experiments \

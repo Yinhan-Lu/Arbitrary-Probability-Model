@@ -186,9 +186,10 @@ class DistilBertTrainer(BaseTrainer):
             trainer_args=self.args,
         )
 
-        # Mode 1 is the "main" loss (for BaseTrainer)
-        metrics["loss"] = metrics["mode1_loss"]
-        metrics["perplexity"] = metrics["mode1_ppl"]
+        # Use Mode 3 loss as main criterion (matching conditional/sigmagpt for fair comparison)
+        # Mode 3 represents the training distribution, which is the target for early stopping
+        metrics["loss"] = metrics["mode3_loss"]
+        metrics["perplexity"] = metrics["mode3_ppl"]
 
         logger.info(f"Mode 1 (MLM baseline):        loss={metrics['mode1_loss']:.4f}, ppl={metrics['mode1_ppl']:.2f}")
         logger.info(f"Mode 2 (Boundary iter):       loss={metrics['mode2_loss']:.4f}, ppl={metrics['mode2_ppl']:.2f}")
