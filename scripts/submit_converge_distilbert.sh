@@ -89,21 +89,21 @@ python3 ./train.py \
     --eval_batch_size 16 \
     --gradient_accumulation_steps $GRAD_ACCUM \
     --learning_rate $LEARNING_RATE \
-    --weight_decay $WEIGHT_DECAY \
-    --warmup_steps 2000 \
-    --max_grad_norm 1.0 \
-    --adam_beta1 0.9 \
-    --adam_beta2 0.999 \
-    --cond_pct_min 0.0 \
-    --cond_pct_max 0.4 \
-    --eval_pct_min 1.0 \
-    --eval_pct_max 1.0 \
-    --conditioning_sampling blockwise \
-    --evaluation_sampling blockwise \
-    --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
-    --mode2_boundary_cond_pct_min 0.1 \
-    --mode2_boundary_cond_pct_max 0.3 \
+    # --weight_decay $WEIGHT_DECAY \ 
+    # --warmup_steps 2000 \
+    # --max_grad_norm 1.0 \
+    # --adam_beta1 0.9 \
+    # --adam_beta2 0.999 \
+    # --cond_pct_min 0.0 \
+    # --cond_pct_max 0.4 \
+    # --eval_pct_min 1.0 \
+    # --eval_pct_max 1.0 \
+    # --conditioning_sampling blockwise \
+    # --evaluation_sampling blockwise \
+    # --max_cond_blocks 3 \
+    # --max_eval_blocks 2 \
+    # --mode2_boundary_cond_pct_min 0.1 \
+    # --mode2_boundary_cond_pct_max 0.3 \
     --logging_steps 10 \
     --eval_steps 100 \
     --save_steps 1000 \
