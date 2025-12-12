@@ -52,9 +52,9 @@ echo "========================================="
 EXP_NAME="test_eval_bug"
 MODEL_CONFIG="distilbert-base-uncased"
 BATCH_SIZE=4
-GRAD_ACCUM=4
-NUM_SAMPLES=500
-EVAL_SAMPLES=100
+GRAD_ACCUM=2
+NUM_SAMPLES=5000
+EVAL_SAMPLES=500
 LEARNING_RATE=5e-4
 NUM_EPOCHS=1
 WEIGHT_DECAY=0.1
@@ -72,7 +72,7 @@ echo "  Conditioning: 0-40%"
 echo "  Max Cond Blocks: 3"
 echo "  Max Eval Blocks: 2"
 echo ""
-echo "  ** Eval Steps: 10 (for quick test) **"
+echo "  ** Eval Steps: 20 (for quick test) **"
 echo "  ** Early Stopping: ENABLED (patience=5) **"
 echo "========================================="
 
@@ -106,8 +106,8 @@ python3 ./train.py \
     --eval_batch_size 16 \
     --gradient_accumulation_steps $GRAD_ACCUM \
     --learning_rate $LEARNING_RATE \
-    --logging_steps 10 \
-    --eval_steps 10 \
+    --logging_steps 5 \
+    --eval_steps 20 \
     --save_steps 1000 \
     --early_stopping_patience 5 \
     --do_eval \
