@@ -154,15 +154,14 @@ class DistilBertTrainer(BaseTrainer):
                     attention_mask=attention_mask,
                     labels=labels,
                 )
-                loss = loss / self.args.gradient_accumulation_steps
         else:
             _, loss = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 labels=labels,
             )
-            loss = loss / self.args.gradient_accumulation_steps
 
+        # Loss scaling is now handled in base_trainer.py train() method
         return loss
 
     @torch.no_grad()
