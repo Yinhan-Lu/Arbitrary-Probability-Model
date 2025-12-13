@@ -89,6 +89,16 @@ python3 ./train.py \
     --eval_batch_size 16 \
     --gradient_accumulation_steps $GRAD_ACCUM \
     --learning_rate $LEARNING_RATE \
+    --logging_steps 10 \
+    --eval_steps 100 \
+    --save_steps 1000 \
+    --early_stopping_patience 5 \
+    --do_eval \
+    --max_eval_batches 10 \
+    --output_dir ./experiments \
+    --exp_name $EXP_NAME \
+    --device cuda \
+    --num_workers 4
     # --weight_decay $WEIGHT_DECAY \ 
     # --warmup_steps 2000 \
     # --max_grad_norm 1.0 \
@@ -104,16 +114,6 @@ python3 ./train.py \
     # --max_eval_blocks 2 \
     # --mode2_boundary_cond_pct_min 0.1 \
     # --mode2_boundary_cond_pct_max 0.3 \
-    --logging_steps 10 \
-    --eval_steps 100 \
-    --save_steps 1000 \
-    --early_stopping_patience 5 \
-    --do_eval \
-    --max_eval_batches 10 \
-    --output_dir ./experiments \
-    --exp_name $EXP_NAME \
-    --device cuda \
-    --num_workers 4
 
 EXIT_CODE=$?
 
