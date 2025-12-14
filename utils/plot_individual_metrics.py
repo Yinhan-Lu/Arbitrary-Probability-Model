@@ -366,6 +366,122 @@ def plot_sigmagpt_train_vs_eval(df, output_dir):
     print(f"  ✓ Saved: {output_path}")
 
 
+def plot_mode2_vs_mode4(df, output_dir):
+    """Plot Mode 2 vs Mode 4 comparison (loss and perplexity).
+
+    Mode 2: Filling In
+    Mode 4: Mode 2 Eval Set with Mode 1 (Autoregressive) Logits
+    """
+    has_mode2_loss = 'mode2_loss' in df.columns and not df['mode2_loss'].isna().all()
+    has_mode4_loss = 'mode4_loss' in df.columns and not df['mode4_loss'].isna().all()
+    has_mode2_ppl = 'mode2_ppl' in df.columns and not df['mode2_ppl'].isna().all()
+    has_mode4_ppl = 'mode4_ppl' in df.columns and not df['mode4_ppl'].isna().all()
+
+    if not (has_mode2_loss or has_mode4_loss) and not (has_mode2_ppl or has_mode4_ppl):
+        print("  ⚠ Skipping mode2_vs_mode4 plot (no data)")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    # Loss comparison
+    if has_mode2_loss:
+        data = df[['step', 'mode2_loss']].dropna()
+        if len(data) > 0:
+            axes[0].plot(data['step'], data['mode2_loss'], linewidth=2, color='#2E86AB',
+                        marker='o', markersize=3, alpha=0.7, label='Mode 2 (Filling In)')
+    if has_mode4_loss:
+        data = df[['step', 'mode4_loss']].dropna()
+        if len(data) > 0:
+            axes[0].plot(data['step'], data['mode4_loss'], linewidth=2, color='#E63946',
+                        marker='s', markersize=3, alpha=0.7, label='Mode 4 (M2 Eval + M1 Logits)')
+    axes[0].set_xlabel('Step', fontsize=12)
+    axes[0].set_ylabel('Loss', fontsize=12)
+    axes[0].set_title('Mode 2 vs Mode 4 - Loss', fontsize=13, fontweight='bold')
+    axes[0].legend(loc='best', fontsize=10)
+    axes[0].grid(True, alpha=0.3)
+
+    # Perplexity comparison
+    if has_mode2_ppl:
+        data = df[['step', 'mode2_ppl']].dropna()
+        if len(data) > 0:
+            axes[1].plot(data['step'], data['mode2_ppl'], linewidth=2, color='#2E86AB',
+                        marker='o', markersize=3, alpha=0.7, label='Mode 2 (Filling In)')
+    if has_mode4_ppl:
+        data = df[['step', 'mode4_ppl']].dropna()
+        if len(data) > 0:
+            axes[1].plot(data['step'], data['mode4_ppl'], linewidth=2, color='#E63946',
+                        marker='s', markersize=3, alpha=0.7, label='Mode 4 (M2 Eval + M1 Logits)')
+    axes[1].set_xlabel('Step', fontsize=12)
+    axes[1].set_ylabel('Perplexity', fontsize=12)
+    axes[1].set_title('Mode 2 vs Mode 4 - Perplexity', fontsize=13, fontweight='bold')
+    axes[1].legend(loc='best', fontsize=10)
+    axes[1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_path = output_dir / 'mode2_vs_mode4.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {output_path}")
+
+
+def plot_mode3_vs_mode5(df, output_dir):
+    """Plot Mode 3 vs Mode 5 comparison (loss and perplexity).
+
+    Mode 3: Training Distribution
+    Mode 5: Mode 3 Eval Set with Mode 1 (Autoregressive) Logits
+    """
+    has_mode3_loss = 'mode3_loss' in df.columns and not df['mode3_loss'].isna().all()
+    has_mode5_loss = 'mode5_loss' in df.columns and not df['mode5_loss'].isna().all()
+    has_mode3_ppl = 'mode3_ppl' in df.columns and not df['mode3_ppl'].isna().all()
+    has_mode5_ppl = 'mode5_ppl' in df.columns and not df['mode5_ppl'].isna().all()
+
+    if not (has_mode3_loss or has_mode5_loss) and not (has_mode3_ppl or has_mode5_ppl):
+        print("  ⚠ Skipping mode3_vs_mode5 plot (no data)")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    # Loss comparison
+    if has_mode3_loss:
+        data = df[['step', 'mode3_loss']].dropna()
+        if len(data) > 0:
+            axes[0].plot(data['step'], data['mode3_loss'], linewidth=2, color='#06D6A0',
+                        marker='o', markersize=3, alpha=0.7, label='Mode 3 (Training Dist)')
+    if has_mode5_loss:
+        data = df[['step', 'mode5_loss']].dropna()
+        if len(data) > 0:
+            axes[0].plot(data['step'], data['mode5_loss'], linewidth=2, color='#F77F00',
+                        marker='s', markersize=3, alpha=0.7, label='Mode 5 (M3 Eval + M1 Logits)')
+    axes[0].set_xlabel('Step', fontsize=12)
+    axes[0].set_ylabel('Loss', fontsize=12)
+    axes[0].set_title('Mode 3 vs Mode 5 - Loss', fontsize=13, fontweight='bold')
+    axes[0].legend(loc='best', fontsize=10)
+    axes[0].grid(True, alpha=0.3)
+
+    # Perplexity comparison
+    if has_mode3_ppl:
+        data = df[['step', 'mode3_ppl']].dropna()
+        if len(data) > 0:
+            axes[1].plot(data['step'], data['mode3_ppl'], linewidth=2, color='#06D6A0',
+                        marker='o', markersize=3, alpha=0.7, label='Mode 3 (Training Dist)')
+    if has_mode5_ppl:
+        data = df[['step', 'mode5_ppl']].dropna()
+        if len(data) > 0:
+            axes[1].plot(data['step'], data['mode5_ppl'], linewidth=2, color='#F77F00',
+                        marker='s', markersize=3, alpha=0.7, label='Mode 5 (M3 Eval + M1 Logits)')
+    axes[1].set_xlabel('Step', fontsize=12)
+    axes[1].set_ylabel('Perplexity', fontsize=12)
+    axes[1].set_title('Mode 3 vs Mode 5 - Perplexity', fontsize=13, fontweight='bold')
+    axes[1].legend(loc='best', fontsize=10)
+    axes[1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    output_path = output_dir / 'mode3_vs_mode5.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {output_path}")
+
+
 def plot_epoch_comparison(df, output_dir):
     """Plot loss distribution by epoch using boxplots."""
     if 'train_loss' not in df.columns or df['train_loss'].isna().all():
@@ -475,6 +591,10 @@ def plot_all_metrics(exp_dir, output_dir=None):
     plot_sigmagpt_eval_loss(df, output_dir)
     plot_sigmagpt_eval_perplexity(df, output_dir)
     plot_sigmagpt_train_vs_eval(df, output_dir)
+
+    # Mode comparison plots (effect of using M1 logits)
+    plot_mode2_vs_mode4(df, output_dir)
+    plot_mode3_vs_mode5(df, output_dir)
 
     # Individual mode plots (for conditional model)
     for mode_num in range(1, 6):
