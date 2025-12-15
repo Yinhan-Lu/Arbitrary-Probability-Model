@@ -70,8 +70,8 @@ Bidirectional encoder model with masked language modeling, used as a **condition
 - **Mode 1**: Standard MLM evaluation (parallel masked-token prediction; diagnostic only)
 - **Mode 2**: Boundary-constrained *iterative* conditional evaluation (true conditional task)
 - **Mode 3**: Training-distribution *iterative* conditional evaluation (true conditional task)
-- **Mode 4**: Boundary-constrained *parallel* masked prediction (efficiency diagnostic)
-- **Mode 5**: Training-distribution *parallel* masked prediction (efficiency diagnostic)
+- **Mode 4**: Boundary-constrained *parallel* masked prediction
+- **Mode 5**: Training-distribution *parallel* masked prediction
 
 **Note:**  
 Modes 2 and 3 correspond to well-defined conditional probability estimation and are used for **cross-model comparison**.  
