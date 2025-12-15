@@ -68,8 +68,41 @@ def extract_label(exp_name):
     return exp_name  # Return original if pattern doesn't match
 
 
-def load_experiment_data(exp_dir):
-    """Load metrics.csv and return DataFrame with experiment info."""
+def parse_experiment_arg(arg):
+    """Parse experiment argument with optional row limit.
+
+    Examples:
+        'experiments/exp1' -> ('experiments/exp1', None)
+        'experiments/exp1:100' -> ('experiments/exp1', 100)
+
+    Args:
+        arg: Experiment path, optionally followed by :N for row limit
+
+    Returns:
+        Tuple of (path, max_rows) where max_rows is None if not specified
+    """
+    if ':' in arg:
+        parts = arg.rsplit(':', 1)  # rsplit to handle paths with colons
+        path = parts[0]
+        try:
+            max_rows = int(parts[1])
+            return path, max_rows
+        except ValueError:
+            # Not a number, treat entire string as path
+            return arg, None
+    return arg, None
+
+
+def load_experiment_data(exp_dir, max_rows=None):
+    """Load metrics.csv and return DataFrame with experiment info.
+
+    Args:
+        exp_dir: Path to experiment directory
+        max_rows: Optional maximum number of rows to load (None = all rows)
+
+    Returns:
+        Tuple of (DataFrame, experiment_name, label)
+    """
     exp_path = Path(exp_dir)
     metrics_csv = exp_path / 'logs' / 'metrics.csv'
 
@@ -79,6 +112,10 @@ def load_experiment_data(exp_dir):
     df = pd.read_csv(metrics_csv)
     df = df.replace('', np.nan)
     df = df.replace('inf', np.inf)
+
+    # Apply row limit if specified
+    if max_rows is not None and max_rows > 0:
+        df = df.head(max_rows)
 
     exp_name = exp_path.name
     label = extract_label(exp_name)
@@ -415,11 +452,16 @@ def plot_all_comparisons(exp_dirs, output_base_dir=None):
 
     # Load all experiments
     experiments_data = []
-    for exp_dir in exp_dirs:
+    experiments_meta = []  # Store (exp_dir, max_rows) for comparison_info.json
+    for exp_arg in exp_dirs:
+        # Parse experiment argument (path and optional max_rows)
+        exp_dir, max_rows = parse_experiment_arg(exp_arg)
         try:
-            df, exp_name, label = load_experiment_data(exp_dir)
+            df, exp_name, label = load_experiment_data(exp_dir, max_rows=max_rows)
             experiments_data.append((df, exp_name, label))
-            print(f"  + Loaded: {label} ({len(df)} rows)")
+            experiments_meta.append((exp_dir, max_rows))
+            rows_info = f" (limited to {max_rows} rows)" if max_rows else ""
+            print(f"  + Loaded: {label} ({len(df)} rows){rows_info}")
         except FileNotFoundError as e:
             print(f"  ! Error loading {exp_dir}: {e}")
 
@@ -478,13 +520,11 @@ def plot_all_comparisons(exp_dirs, output_base_dir=None):
         'plots_generated': plots_generated,
     }
 
-    for df, exp_name, label in experiments_data:
-        exp_path = None
-        for exp_dir in exp_dirs:
-            if Path(exp_dir).name == exp_name:
-                exp_path = exp_dir
-                break
-        summary = get_experiment_summary(df, exp_path, label)
+    for i, (df, exp_name, label) in enumerate(experiments_data):
+        exp_dir, max_rows = experiments_meta[i]
+        summary = get_experiment_summary(df, exp_dir, label)
+        summary['max_rows_limit'] = max_rows  # None if no limit was applied
+        summary['rows_loaded'] = len(df)
         comparison_info['experiments'].append(summary)
 
     info_path = output_dir / 'comparison_info.json'
@@ -518,11 +558,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Compare 2 experiments
+  # Compare 2 experiments (all rows)
   python utils/plot_comparison_metrics.py experiments/exp1 experiments/exp2
 
   # Compare 3 experiments
   python utils/plot_comparison_metrics.py experiments/exp1 experiments/exp2 experiments/exp3
+
+  # Limit rows per experiment using :N syntax
+  python utils/plot_comparison_metrics.py experiments/exp1:100 experiments/exp2:200
+
+  # Mix of limited and unlimited
+  python utils/plot_comparison_metrics.py experiments/exp1:100 experiments/exp2 experiments/exp3:300
 
 Output:
   comparison_between_experiments/YYYYMMDD_HHMMSS/
@@ -538,7 +584,9 @@ Output:
     )
 
     parser.add_argument('experiments', nargs='+', type=str,
-                       help='Paths to experiment directories (at least 2)')
+                       help='Paths to experiment directories (at least 2). '
+                            'Optionally add :N to limit to first N rows '
+                            '(e.g., experiments/exp1:100)')
 
     args = parser.parse_args()
 
