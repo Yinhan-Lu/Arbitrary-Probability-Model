@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from train.conditional_trainer import ConditionalTrainer
 from train.baseline_trainer import BaselineTrainer
 from train.sigmagpt_trainer import SigmaGPTTrainer
-
+from train.distilbert_trainer import DistilBertTrainer
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -97,8 +97,8 @@ def parse_args():
         "--model_type",
         type=str,
         required=True,
-        choices=["conditional", "baseline", "sigmagpt"],
-        help="Type of model to train: 'conditional', 'baseline', or 'sigmagpt'"
+        choices=["conditional", "baseline", "sigmagpt", "distilbert"],
+        help="Type of model to train: 'conditional', 'baseline', 'sigmagpt', or 'distilbert' "
     )
 
     # ========== Common Arguments (Shared by All Models) ==========
@@ -390,7 +390,7 @@ def parse_args():
             help="Use pad_token_id to determine valid positions (old buggy behavior)"
         )
 
-    elif args.model_type == "baseline":
+    elif args.model_type in ["baseline", "distilbert"]:
         # Baseline model specific arguments
         parser.add_argument(
             "--fp16",
@@ -413,6 +413,18 @@ def parse_args():
             type=str,
             default="20220301.en",
             help="Dataset configuration"
+        )
+        parser.add_argument(
+            "--cond_pct_min",
+            type=float,
+            default=0.2,
+            help="Minimum percentage of conditioning tokens for BERT evaluation mode 3"
+        )
+        parser.add_argument(
+            "--cond_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum percentage of conditioning tokens for BERT evaluation mode 3"
         )
 
     elif args.model_type == "sigmagpt":
@@ -563,6 +575,9 @@ def create_trainer(args):
     elif args.model_type == "sigmagpt":
         logger.info("Creating Sigma GPT Trainer...")
         return SigmaGPTTrainer(args)
+    elif args.model_type == "distilbert":
+        logger.info("Creating DistilBert Trainer...")
+        return DistilBertTrainer(args)
     else:
         raise ValueError(f"Unknown model_type: {args.model_type}")
 
