@@ -1,52 +1,108 @@
-# GPT-2 PyTorch Implementation from Scratch
+# Arbitrary Conditional Probability Model
 
-A complete implementation of GPT-2 (decoder-only Transformer) in PyTorch with support for custom attention masks, designed for research on different attention mechanisms.
+A research platform for studying **arbitrary conditional probability modeling** in transformer-based language models. This project extends standard autoregressive models to compute P(X_e | X_c) where X_c (conditioning set) and X_e (evaluation set) can be any disjoint subsets of a sequence.
 
-## Features
+## Research Motivation
 
-- **Pure PyTorch implementation** of GPT-2 architecture
-- **Flexible attention mask support** for experimenting with different attention patterns
-- **DistilGPT-2 configuration** using official Hugging Face parameters
-- **Lightweight configurations** (tiny, nano) for CPU testing
-- **Wikipedia dataset** integration for language model pre-training
-- **Complete training pipeline** with logging, checkpointing, and visualization
+Standard autoregressive language models (like GPT-2) can only model left-to-right conditional probabilities:
 
-## Architecture
-
-The model implements the standard GPT-2 stack:
 ```
-Input Embeddings (Token + Position)
-    ↓
-N × Transformer Blocks
-    ├── Layer Norm
-    ├── Multi-Head Self-Attention (with configurable masks)
-    ├── Residual Connection
-    ├── Layer Norm
-    ├── Feed-Forward Network (MLP)
-    └── Residual Connection
-    ↓
-Final Layer Norm
-    ↓
-Language Model Head
+P(x_t | x_1, x_2, ..., x_{t-1})
 ```
+
+This project addresses a fundamental question: **Can transformers learn arbitrary conditional probability distributions?**
+
+We implement models that can compute:
+
+```
+P(X_e | X_c)  where X_c ∩ X_e = ∅
+```
+
+For example, given a sequence "The cat sat on the mat", we can condition on {"The", "sat", "mat"} and evaluate the probability of {"cat", "on", "the"}.
+
+## Key Features
+
+- **Arbitrary Conditional Probability Modeling**: Custom attention masks enabling conditioning on any subset of tokens
+- **Three Model Architectures**: Conditional model, standard autoregressive baseline, and Sigma GPT for comprehensive comparison
+- **Unified Training Pipeline**: Single entry point supporting all model types with identical optimization settings
+- **Deterministic Evaluation Framework**: Pre-generated fixed splits ensuring all models solve identical tasks
+- **Ordering Modes**: Temporal vs. random scramble strategies for systematic capacity testing
+- **Visualization Pipeline**: Experiment analysis and comparison tools
+
+## Model Architectures
+
+### 1. Conditional Model (Main Research)
+**File**: `model/arbitrary_prob_gpt2.py`
+
+The core research model that uses custom attention masks to enable arbitrary conditioning:
+- Tokens in the conditioning set X_c can attend to each other
+- Tokens in the evaluation set X_e can attend to X_c and preceding X_e tokens
+- Special `[M]` mask token represents unknown positions
+- Loss computed only on evaluation set positions
+
+### 2. Baseline Model
+**File**: `model/baseline_gpt2.py`
+
+Standard autoregressive GPT-2 implementation for reference:
+- Left-to-right causal attention only
+- Models P(x_t | x_{<t})
+- Serves as performance baseline
+
+### 3. Sigma GPT
+**File**: `model/sigmagpt_from_baseline.py`
+
+Random permutation approach for comparison:
+- Shuffles entire sequence order
+- Trains on permuted sequences
+- Two ordering strategies for fair comparison
 
 ## Project Structure
 
 ```
 .
-├── model/
-│   ├── arbitrary_prob_gpt2.py  # GPT-2 model implementation
-│   └── config.py                # Model configurations (DistilGPT-2, Tiny, Nano)
-├── train/
-│   ├── dataset.py               # Wikipedia dataset loader
-│   ├── loop.py                  # Training loop with logging
-│   └── sanity.py                # Sanity check tests
-├── scripts/
-│   ├── train.py                 # Main training script
-│   └── sanity_run.sh            # One-click sanity check
-├── logs/                        # Training logs and plots (created during training)
-├── checkpoints/                 # Model checkpoints (created during training)
-└── README.md                    # This file
+├── model/                          # Model implementations
+│   ├── arbitrary_prob_gpt2.py      # Conditional probability model
+│   ├── baseline_gpt2.py            # Standard GPT-2 baseline
+│   ├── sigmagpt_from_baseline.py   # Sigma GPT implementation
+│   ├── config.py                   # Model configurations
+│   ├── token_manager.py            # Special token handling ([M] mask)
+│   └── order_utils.py              # Order tensor utilities
+│
+├── train/                          # Training infrastructure (16 modules)
+│   ├── conditional_trainer.py      # Conditional model training
+│   ├── baseline_trainer.py         # Baseline training
+│   ├── sigmagpt_trainer.py         # Sigma GPT training
+│   ├── base_trainer.py             # Abstract base trainer
+│   ├── dataset.py                  # Wikipedia dataset loading
+│   ├── augmentation.py             # Data augmentation with ordering modes
+│   ├── mask_utils.py               # Attention mask construction
+│   ├── ordering_modes.py           # Temporal vs. scramble strategies
+│   ├── deterministic_eval.py       # Reproducible evaluation
+│   └── ...
+│
+├── tests/                          # Test suite (30+ tests)
+│   ├── quick_test.py               # Fast validation (~10s)
+│   ├── sanity.py                   # Full pipeline test (~3 min)
+│   ├── test_ordering_modes.py      # Ordering strategy tests
+│   └── ...
+│
+├── scripts/                        # SLURM and utility scripts (40+ files)
+│   ├── submit_comparison_*.sh      # Experiment submission scripts
+│   ├── generate_eval_splits.py     # Deterministic split generation
+│   └── ...
+│
+├── visualization/                  # Experiment analysis
+│   ├── experiment_loader.py        # Metrics loading
+│   ├── plotting.py                 # Visualization functions
+│   └── README.md
+│
+├── utils/                          # Development utilities
+│   ├── quickstart_visualization.py
+│   └── compare_experiments.py
+│
+├── experiments/                    # Experiment outputs (gitignored)
+├── train.py                        # Unified training entry point
+└── requirements.txt
 ```
 
 ## Installation
@@ -55,14 +111,13 @@ Language Model Head
 
 - Python 3.8+
 - PyTorch 2.0+
-- Transformers (for tokenizer)
-- Datasets (for Wikipedia data)
-- Matplotlib (for plotting)
+- Transformers 4.30+
+- Datasets 2.12+
 
 ### Install Dependencies
 
 ```bash
-pip install torch transformers datasets matplotlib
+pip install torch transformers datasets matplotlib seaborn pandas
 ```
 
 Or use the requirements file:
@@ -73,298 +128,262 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### 1. Sanity Check (Recommended First Step)
+### 1. Run Tests
 
-Run all tests to verify the implementation:
+Verify the installation:
 
 ```bash
-./scripts/sanity_run.sh
+# Fast validation (~10 seconds)
+python tests/quick_test.py
+
+# Full pipeline test (~3 minutes)
+python tests/sanity.py
 ```
 
-This will test:
-- **M0**: Model instantiation and forward pass
-- **M1**: Data loading and tokenization
-- **M2**: Training loop and loss convergence
+### 2. Train Models
 
-### 2. CPU Testing (Tiny Configuration)
-
-Quick training on CPU with minimal resources:
+The unified `train.py` supports all three model types:
 
 ```bash
-python scripts/train.py \
-    --config tiny \
-    --max_epochs 1 \
-    --num_train_samples 100 \
-    --num_val_samples 20 \
-    --batch_size 4 \
-    --device cpu
+# Conditional model (main research)
+python train.py --model_type conditional --config tiny --max_steps 1000
+
+# Baseline autoregressive model
+python train.py --model_type baseline --config tiny --max_steps 1000
+
+# Sigma GPT model
+python train.py --model_type sigmagpt --config tiny --max_steps 1000
 ```
 
-### 3. GPU Training (DistilGPT-2 Configuration)
-
-Full training on GPU with DistilGPT-2 parameters:
+### 3. Visualize Results
 
 ```bash
-python scripts/train.py \
+# Single experiment
+python utils/quickstart_visualization.py experiments/your_experiment
+
+# Compare multiple experiments
+python utils/quickstart_visualization.py exp1 exp2 --compare
+```
+
+## Training
+
+### Unified Training Interface
+
+All models use the same training interface for fair comparison:
+
+```bash
+python train.py \
+    --model_type conditional \
     --config distilgpt2 \
-    --max_epochs 3 \
-    --batch_size 16 \
+    --max_steps 50000 \
+    --batch_size 8 \
+    --gradient_accumulation_steps 16 \
     --learning_rate 5e-4 \
     --device cuda
 ```
 
+**Model Types:**
+- `conditional` - Arbitrary conditional probability model
+- `baseline` - Standard autoregressive GPT-2
+- `sigmagpt` - Sigma GPT with random permutation
+
+### SLURM Cluster Training
+
+For large-scale experiments:
+
+```bash
+# Conditional model comparison
+sbatch scripts/submit_comparison_conditional.sh
+
+# Sigma GPT with temporal ordering
+sbatch scripts/submit_comparison_sigmagpt_temporal.sh
+
+# Sigma GPT with random scrambling
+sbatch scripts/submit_comparison_sigmagpt_scramble.sh
+```
+
+### Configuration Options
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--model_type` | Model architecture | `conditional` |
+| `--config` | Size configuration | `distilgpt2` |
+| `--max_steps` | Training steps | `50000` |
+| `--batch_size` | Batch size | `8` |
+| `--gradient_accumulation_steps` | Gradient accumulation | `16` |
+| `--learning_rate` | Learning rate | `5e-4` |
+| `--ordering_mode` | Ordering strategy | `temporal` |
+
+## Evaluation
+
+### Deterministic Evaluation Framework
+
+To ensure fair comparison, all models are evaluated on identical tasks:
+
+```bash
+# Generate fixed evaluation splits
+python scripts/generate_eval_splits.py --num_splits 1000 --output eval_splits.json
+
+# Train with deterministic evaluation
+python train.py --model_type conditional --eval_splits eval_splits.json
+```
+
+### Ordering Modes
+
+Two ordering strategies for systematic capacity testing:
+
+1. **Temporal** (`--ordering_mode temporal`): Maintain chronological order within blocks
+2. **Random Scramble** (`--ordering_mode random_scramble`): Shuffle tokens within blocks
+
 ## Model Configurations
 
-### DistilGPT-2 (Official Hugging Face Parameters)
+### DistilGPT-2 (Production)
 
 ```python
-vocab_size: 50257
 n_layer: 6
 n_head: 12
 n_embd: 768
+vocab_size: 50257
 max_seq_len: 1024
-dropout: 0.1
 Parameters: ~82M
 ```
-
-Source: [Hugging Face DistilGPT-2](https://huggingface.co/distilbert/distilgpt2)
 
 ### Tiny (CPU Testing)
 
 ```python
-vocab_size: 50257
 n_layer: 2
 n_head: 4
 n_embd: 128
 max_seq_len: 256
-dropout: 0.1
 Parameters: ~7M
 ```
 
 ### Nano (Quick Debugging)
 
 ```python
-vocab_size: 50257
 n_layer: 1
 n_head: 2
 n_embd: 64
 max_seq_len: 128
-dropout: 0.0
 Parameters: ~3M
 ```
 
-## Custom Attention Masks
+## Key Technical Details
 
-The model supports custom attention masks for research on different attention mechanisms:
+### Custom Attention Masks
+
+The conditional model uses custom attention masks:
 
 ```python
-from model.arbitrary_prob_gpt2 import GPT2Model, create_causal_mask
-from model.config import get_config
-
-config = get_config("tiny")
-model = GPT2Model(config)
-
-# Default: Causal (left-to-right) mask
-logits, loss = model(input_ids)
-
-# Custom mask (e.g., bidirectional, sliding window, etc.)
-custom_mask = create_your_custom_mask(seq_len)  # Shape: (batch, seq_len, seq_len)
-logits, loss = model(input_ids, attention_mask=custom_mask)
+# Conditioning tokens (X_c) can see each other
+# Evaluation tokens (X_e) can see X_c and preceding X_e tokens
+attention_mask = create_conditional_mask(
+    conditioning_indices=c_indices,
+    evaluation_indices=e_indices,
+    seq_len=seq_len
+)
 ```
 
-## Training
+### [M] Mask Token
 
-### Production Training (SLURM Cluster)
+A special `[M]` token represents unknown positions:
 
-For full-scale training on Wikipedia with comprehensive logging:
+```python
+from model.token_manager import TokenManager
 
-**H100 GPU (Recommended):**
-```bash
-sbatch scripts/submit_training_h100.sh
+token_manager = TokenManager(tokenizer)
+# Input: "The [M] sat on the [M]"
+# Model predicts tokens at [M] positions given visible tokens
 ```
 
-**A100 GPU:**
-```bash
-sbatch scripts/submit_training.sh
+### Loss Computation
+
+Loss is computed only on evaluation set positions:
+
+```python
+# Only evaluate probability of X_e tokens
+loss = cross_entropy(logits[e_indices], targets[e_indices])
 ```
 
-See [TRAINING_GUIDE.md](docs/TRAINING_GUIDE.md) for complete documentation on:
-- SLURM job submission
-- Hyperparameter tuning
-- Monitoring and logging
-- TensorBoard/WandB integration
-- Checkpoint management
-- Troubleshooting
+## Visualization
 
-### Basic Training (Development)
+### Training Curves
 
 ```bash
-python scripts/train.py --config tiny --max_epochs 3
+# Plot single experiment
+python utils/quickstart_visualization.py experiments/exp_name
+
+# Compare experiments
+python utils/quickstart_visualization.py exp1 exp2 exp3 --compare
 ```
 
-### Advanced Options
+### Experiment Analysis
+
+```python
+from visualization import quick_plot
+
+# Single experiment analysis
+quick_plot("experiments/your_experiment")
+
+# Multi-experiment comparison
+from visualization.plotting import plot_comparison
+plot_comparison(["exp1", "exp2"], metrics=["loss", "perplexity"])
+```
+
+## Testing
+
+| Test | Description | Runtime |
+|------|-------------|---------|
+| `quick_test.py` | Fast model validation | ~10s |
+| `sanity.py` | Full training pipeline | ~3 min |
+| `test_ordering_modes.py` | Ordering strategy verification | ~30s |
+| `test_checkpoint_loading.py` | Checkpoint I/O | ~30s |
+
+Run all tests:
 
 ```bash
-python train_distilgpt2.py \
-    --model_config distilgpt2 \
-    --num_epochs 3 \
-    --batch_size 8 \
-    --gradient_accumulation_steps 16 \
-    --learning_rate 5e-4 \
-    --fp16 \
-    --do_eval \
-    --device cuda
+# From project root
+python tests/quick_test.py
+python tests/sanity.py
 ```
-
-### Resume Training
-
-```bash
-python train_distilgpt2.py \
-    --resume_from_checkpoint experiments/.../checkpoints/checkpoint_step_5000.pt
-```
-
-## Monitoring Training
-
-### View Logs
-
-```bash
-# CSV log with step, epoch, loss, lr, etc.
-cat logs/training_log.csv
-
-# Training curves (loss and learning rate)
-open logs/training_curves.png
-```
-
-### TensorBoard (Optional)
-
-You can extend the trainer to add TensorBoard logging.
-
-## Development Milestones
-
-| Milestone | Description | Status |
-|-----------|-------------|--------|
-| M0 | Model skeleton and attention mask module | ✓ Complete |
-| M1 | Tokenizer + Wikipedia data pipeline | ✓ Complete |
-| M2 | Lightweight validation (tiny config) | ✓ Complete |
-| M3 | Full training (DistilGPT-2 config) | Ready |
-| M4 | Special attention mechanism extensions | Ready |
-
-## Key Design Decisions
-
-### 1. Attention Mask Interface
-
-The model's forward pass accepts an optional `attention_mask` parameter:
-- If `None` (default): Uses causal (left-to-right) mask
-- If provided: Uses custom mask for specialized attention patterns
-
-This design allows easy experimentation with different attention mechanisms without modifying the core model.
-
-### 2. Configuration System
-
-Three pre-defined configurations support different use cases:
-- **DistilGPT-2**: Production training with official parameters
-- **Tiny**: Fast iteration on CPU
-- **Nano**: Ultra-fast debugging
-
-### 3. Data Pipeline
-
-Uses Hugging Face's `datasets` library for:
-- Automatic Wikipedia dataset downloading
-- Streaming support for large-scale training
-- Fallback to WikiText-2 if Wikipedia unavailable
-
-## Performance Tips
-
-### CPU Training
-- Use `--config tiny` or `--config nano`
-- Reduce batch size: `--batch_size 2`
-- Limit samples: `--num_train_samples 100`
-- Disable workers: `--num_workers 0`
-
-### GPU Training
-- Use `--config distilgpt2`
-- Increase batch size: `--batch_size 32` (adjust based on GPU memory)
-- Enable multiple workers: `--num_workers 4`
-- Use mixed precision training (extend trainer with `torch.cuda.amp`)
 
 ## Troubleshooting
 
-### Out of Memory (OOM)
+### Out of Memory
 
-- Reduce batch size: `--batch_size 8`
-- Use gradient accumulation (extend trainer)
-- Reduce sequence length in config
-- Use a smaller model config
+```bash
+# Reduce batch size
+python train.py --batch_size 4 --gradient_accumulation_steps 32
+
+# Use smaller config
+python train.py --config tiny
+```
 
 ### Slow Data Loading
 
-- Increase workers: `--num_workers 8`
-- Use streaming dataset for very large datasets
-- Cache tokenized data (extend dataset class)
+```bash
+# Increase workers
+python train.py --num_workers 8
+```
 
 ### Loss Not Decreasing
 
-- Check learning rate (try `1e-3` for faster initial convergence)
-- Ensure data is loading correctly (run sanity checks)
-- Increase training samples or epochs
-- Check for data preprocessing issues
-
-## Extending the Project
-
-### Custom Attention Mechanisms
-
-1. Create custom mask generation function:
-```python
-def create_custom_mask(seq_len, pattern="bidirectional"):
-    if pattern == "bidirectional":
-        return torch.ones(seq_len, seq_len)
-    elif pattern == "sliding_window":
-        # Implement sliding window attention
-        ...
-    return mask
-```
-
-2. Pass to model:
-```python
-custom_mask = create_custom_mask(seq_len, pattern="sliding_window")
-logits, loss = model(input_ids, attention_mask=custom_mask)
-```
-
-### Different Datasets
-
-Modify `train/dataset.py` to load other text datasets:
-```python
-dataset = load_dataset("your_dataset", split="train")
-```
-
-### Evaluation Metrics
-
-Extend `train/loop.py` to add perplexity, BLEU, or other metrics.
-
-## Citation
-
-If you use this implementation in your research, please cite:
-
-```bibtex
-@software{gpt2_pytorch_impl,
-  title={GPT-2 PyTorch Implementation from Scratch},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/arbitrary-prob-model}
-}
-```
+- Check learning rate (try `1e-3` for faster convergence)
+- Verify data loading with `python tests/sanity.py`
+- Increase training steps
 
 ## References
 
-- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Original Transformer paper
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Original Transformer
 - [GPT-2: Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
 - [DistilGPT-2 on Hugging Face](https://huggingface.co/distilbert/distilgpt2)
-- [The Illustrated GPT-2](https://jalammar.github.io/illustrated-gpt2/)
 
 ## License
 
-MIT License - Feel free to use this code for research and educational purposes.
+MIT License - For research and educational purposes.
 
-## Contact
+## Author
+
+Yinhan Lu - McGill University
 
 For questions or issues, please open an issue on GitHub.
