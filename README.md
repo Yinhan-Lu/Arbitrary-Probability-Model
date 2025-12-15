@@ -59,15 +59,23 @@ Random permutation approach for comparison:
 ### 4. DistilBERT
 **File**: `model/distilbert.py`
 
-Bidirectional encoder model with masked language modeling:
-- Full bidirectional attention (attends to all positions)
+Bidirectional encoder model with masked language modeling, used as a **conditional-prediction baseline**:
+
+- Full bidirectional attention (masked language modeling), not autoregressive
 - 15% random token masking during training
-- 5 evaluation modes for comprehensive analysis:
-  - Mode 1: Standard MLM (Joint Probability)
-  - Mode 2: Boundary-Constrained Iterative
-  - Mode 3: Training-Distribution Iterative
-  - Mode 4: Boundary-Constrained Parallel
-  - Mode 5: Training-Distribution Parallel
+- Used primarily to benchmark **conditional probability estimation quality**
+- Conditional probabilities require **multiple forward passes** when predicting multiple tokens
+
+**Evaluation modes (adapted from autoregressive definitions):**
+- **Mode 1**: Standard MLM evaluation (parallel masked-token prediction; diagnostic only)
+- **Mode 2**: Boundary-constrained *iterative* conditional evaluation (true conditional task)
+- **Mode 3**: Training-distribution *iterative* conditional evaluation (true conditional task)
+- **Mode 4**: Boundary-constrained *parallel* masked prediction (efficiency diagnostic)
+- **Mode 5**: Training-distribution *parallel* masked prediction (efficiency diagnostic)
+
+**Note:**  
+Modes 2 and 3 correspond to well-defined conditional probability estimation and are used for **cross-model comparison**.  
+
 
 ## Project Structure
 
@@ -418,5 +426,6 @@ MIT License - For research and educational purposes.
 ## Author
 
 Yinhan Lu - McGill University
+Kim Soubie-Giroux for adapted DistilBERT - McGill University
 
 For questions or issues, please open an issue on GitHub.
