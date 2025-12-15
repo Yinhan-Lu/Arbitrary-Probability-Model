@@ -426,6 +426,7 @@ MIT License - For research and educational purposes.
 ## Author
 
 Yinhan Lu - McGill University
+
 Kim Soubie-Giroux for adapted DistilBERT - McGill University
 
 For questions or issues, please open an issue on GitHub.
