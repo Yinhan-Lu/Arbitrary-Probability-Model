@@ -23,7 +23,7 @@ For example, given a sequence "The cat sat on the mat", we can condition on {"Th
 ## Key Features
 
 - **Arbitrary Conditional Probability Modeling**: Custom attention masks enabling conditioning on any subset of tokens
-- **Three Model Architectures**: Conditional model, standard autoregressive baseline, and Sigma GPT for comprehensive comparison
+- **Four Model Architectures**: Conditional model, baseline GPT-2, Sigma GPT, and DistilBERT for comprehensive comparison
 - **Unified Training Pipeline**: Single entry point supporting all model types with identical optimization settings
 - **Deterministic Evaluation Framework**: Pre-generated fixed splits ensuring all models solve identical tasks
 - **Ordering Modes**: Temporal vs. random scramble strategies for systematic capacity testing
@@ -56,6 +56,19 @@ Random permutation approach for comparison:
 - Trains on permuted sequences
 - Two ordering strategies for fair comparison
 
+### 4. DistilBERT
+**File**: `model/distilbert.py`
+
+Bidirectional encoder model with masked language modeling:
+- Full bidirectional attention (attends to all positions)
+- 15% random token masking during training
+- 5 evaluation modes for comprehensive analysis:
+  - Mode 1: Standard MLM (Joint Probability)
+  - Mode 2: Boundary-Constrained Iterative
+  - Mode 3: Training-Distribution Iterative
+  - Mode 4: Boundary-Constrained Parallel
+  - Mode 5: Training-Distribution Parallel
+
 ## Project Structure
 
 ```
@@ -64,6 +77,7 @@ Random permutation approach for comparison:
 │   ├── arbitrary_prob_gpt2.py      # Conditional probability model
 │   ├── baseline_gpt2.py            # Standard GPT-2 baseline
 │   ├── sigmagpt_from_baseline.py   # Sigma GPT implementation
+│   ├── distilbert.py               # DistilBERT for MLM
 │   ├── config.py                   # Model configurations
 │   ├── token_manager.py            # Special token handling ([M] mask)
 │   └── order_utils.py              # Order tensor utilities
@@ -72,6 +86,8 @@ Random permutation approach for comparison:
 │   ├── conditional_trainer.py      # Conditional model training
 │   ├── baseline_trainer.py         # Baseline training
 │   ├── sigmagpt_trainer.py         # Sigma GPT training
+│   ├── distilbert_trainer.py       # DistilBERT training
+│   ├── bert_evaluation_modes.py    # 5 BERT evaluation modes
 │   ├── base_trainer.py             # Abstract base trainer
 │   ├── dataset.py                  # Wikipedia dataset loading
 │   ├── augmentation.py             # Data augmentation with ordering modes
@@ -214,6 +230,24 @@ sbatch scripts/submit_comparison_sigmagpt_scramble.sh
 | `--learning_rate` | Learning rate | `5e-4` |
 | `--ordering_mode` | Ordering strategy | `temporal` |
 
+### Convergence Training
+
+Train until convergence using early stopping with patience:
+
+```bash
+python train.py \
+    --model_type conditional \
+    --num_epochs 100 \
+    --early_stopping_patience 5 \
+    --do_eval \
+    --eval_steps 500
+```
+
+- Evaluates every 500 steps
+- Tracks best validation loss
+- Stops if no improvement for 5 consecutive evaluations
+- Checkpoint saves best model automatically
+
 ## Evaluation
 
 ### Deterministic Evaluation Framework
@@ -307,28 +341,33 @@ loss = cross_entropy(logits[e_indices], targets[e_indices])
 
 ## Visualization
 
-### Training Curves
+### Individual Experiment Plotting
+
+Generate plots for a single experiment:
 
 ```bash
-# Plot single experiment
 python utils/quickstart_visualization.py experiments/exp_name
+```
 
-# Compare experiments
+Output files:
+- `train_loss_vs_step.png` - Training loss curve
+- `train_perplexity_vs_step.png` - Training perplexity
+- `learning_rate_vs_step.png` - Learning rate schedule
+- `all_modes_loss.png` - All evaluation modes comparison
+
+### Comparison Plotting
+
+Compare multiple experiments with overlaid curves:
+
+```bash
 python utils/quickstart_visualization.py exp1 exp2 exp3 --compare
 ```
 
-### Experiment Analysis
-
-```python
-from visualization import quick_plot
-
-# Single experiment analysis
-quick_plot("experiments/your_experiment")
-
-# Multi-experiment comparison
-from visualization.plotting import plot_comparison
-plot_comparison(["exp1", "exp2"], metrics=["loss", "perplexity"])
-```
+Features:
+- Overlaid training curves for direct comparison
+- Color-coded by experiment
+- Output saved to `comparison_between_experiments/` folder
+- Supports row limiting: `exp1:100` uses only first 100 rows
 
 ## Testing
 
@@ -371,12 +410,6 @@ python train.py --num_workers 8
 - Check learning rate (try `1e-3` for faster convergence)
 - Verify data loading with `python tests/sanity.py`
 - Increase training steps
-
-## References
-
-- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Original Transformer
-- [GPT-2: Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
-- [DistilGPT-2 on Hugging Face](https://huggingface.co/distilbert/distilgpt2)
 
 ## License
 
