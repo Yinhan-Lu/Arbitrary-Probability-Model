@@ -210,6 +210,7 @@ python train.py \
 - `conditional` - Arbitrary conditional probability model
 - `baseline` - Standard autoregressive GPT-2
 - `sigmagpt` - Sigma GPT with random permutation
+- `distilbert` - Adapted DistilBert
 
 ### SLURM Cluster Training
 
@@ -224,6 +225,13 @@ sbatch scripts/submit_comparison_sigmagpt_temporal.sh
 
 # Sigma GPT with random scrambling
 sbatch scripts/submit_comparison_sigmagpt_scramble.sh
+```
+
+For DistilBert Training : 
+
+```bash
+# Adapted DistilBert
+sbatch scripts/submit_converge_distilbert.sh
 ```
 
 ### Configuration Options
