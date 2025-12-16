@@ -419,10 +419,6 @@ python train.py --num_workers 8
 - Verify data loading with `python tests/sanity.py`
 - Increase training steps
 
-## License
-
-MIT License - For research and educational purposes.
-
 ## Code Sources 
 
 **DistilBERT architecture** implementation was sourced by
@@ -430,11 +426,18 @@ MIT License - For research and educational purposes.
   *Sanh et al., “DistilBERT: A Distilled Version of BERT” (2019)*  
   https://arxiv.org/abs/1910.01108
   *Chi Sun, Xipeng Qiu, Yige Xu, and Xuanjing Huang. 2019. How to Fine-Tune BERT for Text Classification?* DOI: https: //doi.org/10.1007 / 978-3-030-32381-3_16
+
+  GitHub code from Jacob & Al. paper : 
+  https://github.com/google-research/bert 
+
   HuggingFace Documentation :
   DistiBERT : https://huggingface.co/docs/transformers/en/model_doc/distilbert 
   BERT : https://huggingface.co/docs/transformers/en/model_doc/bert 
-  GitHub code from Jacob & Al. paper : 
-  https://github.com/google-research/bert 
+  
+
+## License
+
+MIT License - For research and educational purposes.
 
 ## Author
 
