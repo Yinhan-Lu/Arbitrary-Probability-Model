@@ -438,15 +438,15 @@ python train.py --num_workers 8
   3) *Chi Sun, Xipeng Qiu, Yige Xu, and Xuanjing Huang. 2019. How to Fine-Tune BERT for Text Classification?* DOI: https://doi.org/10.1007/978-3-030-32381-3_16
 
 
-  GitHub code from Devlin et al, 2019 paper : 
+  GitHub code from Devlin et al, 2019 paper: 
   https://github.com/google-research/bert 
 
 
   HuggingFace Documentation :
 
-  DistiBERT : https://huggingface.co/docs/transformers/en/model_doc/distilbert 
+  DistiBERT: https://huggingface.co/docs/transformers/en/model_doc/distilbert 
 
-  BERT : https://huggingface.co/docs/transformers/en/model_doc/bert 
+  BERT: https://huggingface.co/docs/transformers/en/model_doc/bert 
   
 
 ## License
@@ -458,5 +458,7 @@ MIT License - For research and educational purposes.
 Yinhan Lu - McGill University
 
 Kim Soubie-Giroux for adapted DistilBERT - McGill University
+
+Negar Badr - McGill University
 
 For questions or issues, please open an issue on GitHub.
