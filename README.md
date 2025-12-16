@@ -431,7 +431,7 @@ python train.py --num_workers 8
   3) *Chi Sun, Xipeng Qiu, Yige Xu, and Xuanjing Huang. 2019. How to Fine-Tune BERT for Text Classification?* DOI: https: //doi.org/10.1007 / 978-3-030-32381-3_16
 
 
-  GitHub code from Jacob & Al. paper : 
+  GitHub code from Devlin et al, 2019 paper : 
   https://github.com/google-research/bert 
 
 
