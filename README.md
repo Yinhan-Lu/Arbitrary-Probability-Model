@@ -425,10 +425,9 @@ python train.py --num_workers 8
 
   1) *Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova. 2019. BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.* DOI: https://doi.org/10.48550/arXiv.1810.04805
 
-  2) *Sanh et al., “DistilBERT: A Distilled Version of BERT” (2019)*  
-  https://arxiv.org/abs/1910.01108
+  2) *Victor Sanh, Lysandre Debut, Julien Chaumond, Thomas Wolf. 2019.“DistilBERT: A Distilled Version of BERT: smaller, faster, cheaper and ligher”* DOI: https://doi.org/10.48550/arXiv.1910.01108
 
-  3) *Chi Sun, Xipeng Qiu, Yige Xu, and Xuanjing Huang. 2019. How to Fine-Tune BERT for Text Classification?* DOI: https: //doi.org/10.1007 / 978-3-030-32381-3_16
+  3) *Chi Sun, Xipeng Qiu, Yige Xu, and Xuanjing Huang. 2019. How to Fine-Tune BERT for Text Classification?* DOI: https://doi.org/10.1007/978-3-030-32381-3_16
 
 
   GitHub code from Devlin et al, 2019 paper : 
