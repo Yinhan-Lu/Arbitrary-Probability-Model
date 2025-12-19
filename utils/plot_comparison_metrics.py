@@ -431,6 +431,52 @@ def get_experiment_summary(df, exp_path, label):
     return summary
 
 
+def collect_final_metrics(experiments_data):
+    """Collect final metric values for all experiments.
+
+    Returns a dictionary structured as:
+    {
+        "metric_name": {
+            "model_label": final_value,
+            ...
+        },
+        ...
+    }
+    """
+    # Define all metrics to collect
+    metrics_to_collect = [
+        'train_loss',
+        'train_perplexity',
+        'eval_loss',
+        'eval_perplexity',
+    ]
+
+    # Add mode-specific metrics
+    for mode_num in range(1, 6):
+        metrics_to_collect.append(f'mode{mode_num}_loss')
+        metrics_to_collect.append(f'mode{mode_num}_ppl')
+
+    final_metrics = {}
+
+    for metric_name in metrics_to_collect:
+        metric_values = {}
+
+        for df, exp_name, label in experiments_data:
+            if metric_name in df.columns:
+                data = df[metric_name].dropna()
+                if len(data) > 0:
+                    final_value = data.iloc[-1]
+                    # Handle inf values
+                    if pd.notna(final_value) and not np.isinf(final_value):
+                        metric_values[label] = float(final_value)
+
+        # Only add metric if at least one experiment has data
+        if metric_values:
+            final_metrics[metric_name] = metric_values
+
+    return final_metrics
+
+
 def plot_all_comparisons(exp_dirs, output_base_dir=None):
     """Generate all comparison plots for given experiments."""
     # Determine output directory
@@ -532,6 +578,19 @@ def plot_all_comparisons(exp_dirs, output_base_dir=None):
         json.dump(comparison_info, f, indent=2)
     print(f"  + Saved: {info_path.name}")
 
+    # Generate final_metrics.json
+    print("\nGenerating final_metrics.json...")
+    final_metrics = collect_final_metrics(experiments_data)
+    final_metrics_output = {
+        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'description': 'Final metric values for each model (last non-NaN value)',
+        'metrics': final_metrics,
+    }
+    final_metrics_path = output_dir / 'final_metrics.json'
+    with open(final_metrics_path, 'w') as f:
+        json.dump(final_metrics_output, f, indent=2)
+    print(f"  + Saved: {final_metrics_path.name}")
+
     # Print summary
     print("\n" + "=" * 80)
     print("Comparison Summary")
@@ -580,6 +639,7 @@ Output:
     - compare_eval_loss.png
     - compare_eval_perplexity.png
     - comparison_info.json
+    - final_metrics.json (final values for each metric per model)
         """
     )
 
