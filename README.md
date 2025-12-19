@@ -59,15 +59,23 @@ Random permutation approach for comparison:
 ### 4. DistilBERT
 **File**: `model/distilbert.py`
 
-Bidirectional encoder model with masked language modeling:
-- Full bidirectional attention (attends to all positions)
+Bidirectional encoder model with masked language modeling, used as a **conditional-prediction baseline**:
+
+- Full bidirectional attention (masked language modeling), not autoregressive
 - 15% random token masking during training
-- 5 evaluation modes for comprehensive analysis:
-  - Mode 1: Standard MLM (Joint Probability)
-  - Mode 2: Boundary-Constrained Iterative
-  - Mode 3: Training-Distribution Iterative
-  - Mode 4: Boundary-Constrained Parallel
-  - Mode 5: Training-Distribution Parallel
+- Used primarily to benchmark **conditional probability estimation quality**
+- Conditional probabilities require **multiple forward passes** when predicting multiple tokens
+
+**Evaluation modes (adapted from autoregressive definitions):**
+- **Mode 1**: Standard MLM evaluation (parallel masked-token prediction; diagnostic only)
+- **Mode 2**: Boundary-constrained *iterative* conditional evaluation (true conditional task)
+- **Mode 3**: Training-distribution *iterative* conditional evaluation (true conditional task)
+- **Mode 4**: Boundary-constrained *parallel* masked prediction
+- **Mode 5**: Training-distribution *parallel* masked prediction
+
+**Note:**  
+Modes 2 and 3 correspond to well-defined conditional probability estimation and are used for **cross-model comparison**.  
+
 
 ## Project Structure
 
@@ -202,6 +210,7 @@ python train.py \
 - `conditional` - Arbitrary conditional probability model
 - `baseline` - Standard autoregressive GPT-2
 - `sigmagpt` - Sigma GPT with random permutation
+- `distilbert` - Adapted DistilBert
 
 ### SLURM Cluster Training
 
@@ -216,6 +225,13 @@ sbatch scripts/submit_comparison_sigmagpt_temporal.sh
 
 # Sigma GPT with random scrambling
 sbatch scripts/submit_comparison_sigmagpt_scramble.sh
+```
+
+For DistilBert Training : 
+
+```bash
+# Adapted DistilBert
+sbatch scripts/submit_converge_distilbert.sh
 ```
 
 ### Configuration Options
@@ -411,6 +427,28 @@ python train.py --num_workers 8
 - Verify data loading with `python tests/sanity.py`
 - Increase training steps
 
+## Code Sources 
+
+**DistilBERT architecture** implementation was sourced by
+
+  1) *Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova. 2019. BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.* DOI: https://doi.org/10.48550/arXiv.1810.04805
+
+  2) *Victor Sanh, Lysandre Debut, Julien Chaumond, Thomas Wolf. 2019.“DistilBERT: A Distilled Version of BERT: smaller, faster, cheaper and ligher”* DOI: https://doi.org/10.48550/arXiv.1910.01108
+
+  3) *Chi Sun, Xipeng Qiu, Yige Xu, and Xuanjing Huang. 2019. How to Fine-Tune BERT for Text Classification?* DOI: https://doi.org/10.1007/978-3-030-32381-3_16
+
+
+  GitHub code from Devlin et al, 2019 paper: 
+  https://github.com/google-research/bert 
+
+
+  HuggingFace Documentation :
+
+  DistiBERT: https://huggingface.co/docs/transformers/en/model_doc/distilbert 
+
+  BERT: https://huggingface.co/docs/transformers/en/model_doc/bert 
+  
+
 ## License
 
 MIT License - For research and educational purposes.
@@ -418,5 +456,9 @@ MIT License - For research and educational purposes.
 ## Author
 
 Yinhan Lu - McGill University
+
+Kim Soubie-Giroux for adapted DistilBERT - McGill University
+
+Negar Badr - McGill University
 
 For questions or issues, please open an issue on GitHub.
