@@ -361,6 +361,20 @@ def parse_args():
                  "This makes internal augmentation behave like legacy external augmentation (for debugging/comparison)"
         )
 
+        # Blockwise sampling parameters
+        parser.add_argument(
+            "--max_cond_blocks",
+            type=int,
+            default=5,
+            help="Maximum number of conditioning blocks for blockwise sampling"
+        )
+        parser.add_argument(
+            "--max_eval_blocks",
+            type=int,
+            default=3,
+            help="Maximum number of evaluation blocks for blockwise sampling"
+        )
+
         # Mode 2 (Boundary filling) evaluation parameters
         parser.add_argument(
             "--mode2_boundary_cond_pct_min",
