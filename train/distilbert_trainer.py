@@ -122,18 +122,13 @@ class DistilBertTrainer(BaseTrainer):
             uniform_num_blocks_distribution,
             max_blocks=self.args.max_cond_blocks
         )
-        num_eval_blocks_dist = partial(
-            uniform_num_blocks_distribution,
-            max_blocks=self.args.max_eval_blocks
-        )
 
         class SimpleAugmenter:
             """Simple augmenter wrapper for BERT evaluation modes"""
-            def __init__(self, num_cond_dist, num_eval_dist, num_cond_blocks_dist, num_eval_blocks_dist):
+            def __init__(self, num_cond_dist, num_eval_dist, num_cond_blocks_dist):
                 self.num_cond_dist = num_cond_dist
                 self.num_eval_dist = num_eval_dist
                 self.num_cond_blocks_dist = num_cond_blocks_dist
-                self.num_eval_blocks_dist = num_eval_blocks_dist
 
             def split_indices(self, seq_len, valid_positions=None):
                 return generate_conditioning_evaluation_sets_blockwise(
@@ -142,7 +137,7 @@ class DistilBertTrainer(BaseTrainer):
                     num_blocks_distribution=self.num_cond_blocks_dist,
                     block_sizes_distribution=uniform_block_sizes_distribution,
                     num_evaluation_distribution=self.num_eval_dist,
-                    num_eval_blocks_distribution=self.num_eval_blocks_dist,
+                    num_eval_blocks_distribution=uniform_num_blocks_distribution,
                     eval_block_sizes_distribution=uniform_block_sizes_distribution,
                     valid_positions=valid_positions,
                 )
@@ -150,8 +145,7 @@ class DistilBertTrainer(BaseTrainer):
         self.augmenter = SimpleAugmenter(
             num_cond_dist=num_cond_dist,
             num_eval_dist=num_eval_dist,
-            num_cond_blocks_dist=num_cond_blocks_dist,
-            num_eval_blocks_dist=num_eval_blocks_dist
+            num_cond_blocks_dist=num_cond_blocks_dist
         )
 
 

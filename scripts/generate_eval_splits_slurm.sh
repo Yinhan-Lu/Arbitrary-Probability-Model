@@ -40,7 +40,6 @@ python3 scripts/generate_eval_splits.py \
     --eval_pct_min 1.0 \
     --eval_pct_max 1.0 \
     --max_cond_blocks 3 \
-    --max_eval_blocks 2
 
 EXIT_CODE=$?
 

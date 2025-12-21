@@ -693,18 +693,18 @@ if __name__ == "__main__":
         print(f"Run {run+1}: Cond={c}, Eval={e}")
     print("✓ Test 4 passed")
 
-    # Test 5: Block limit functionality
-    print("\n[Test 5] Testing max_blocks parameter")
+    # Test 5: Block limit functionality (only for conditioning)
+    print("\n[Test 5] Testing max_blocks parameter for conditioning")
     from functools import partial
     
-    # Test with max_blocks limit
+    # Test with max_blocks limit for conditioning only
     c, e, u = generate_conditioning_evaluation_sets_blockwise(
         seq_len=20,
         num_conditioning_distribution=lambda l: uniform_num_conditioning_distribution(l, (0.3, 0.5)),
         num_blocks_distribution=partial(uniform_num_blocks_distribution, max_blocks=3),
         block_sizes_distribution=uniform_block_sizes_distribution,
         num_evaluation_distribution=lambda l: uniform_num_evaluation_distribution(l, (0.3, 0.5)),
-        num_eval_blocks_distribution=partial(uniform_num_blocks_distribution, max_blocks=2),
+        num_eval_blocks_distribution=uniform_num_blocks_distribution,  # No limit
         eval_block_sizes_distribution=uniform_block_sizes_distribution,
     )
     
@@ -721,9 +721,8 @@ if __name__ == "__main__":
     cond_blocks = count_blocks(c)
     eval_blocks = count_blocks(e)
     print(f"Conditioning: {len(c)} tokens in {cond_blocks} blocks (max=3)")
-    print(f"Evaluation: {len(e)} tokens in {eval_blocks} blocks (max=2)")
+    print(f"Evaluation: {len(e)} tokens in {eval_blocks} blocks (unlimited)")
     assert cond_blocks <= 3, f"Conditioning blocks ({cond_blocks}) exceeded max (3)"
-    assert eval_blocks <= 2, f"Evaluation blocks ({eval_blocks}) exceeded max (2)"
     print("✓ Test 5 passed")
 
     print("\n" + "=" * 80)

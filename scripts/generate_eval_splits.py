@@ -131,8 +131,6 @@ Examples:
     # Block configuration
     parser.add_argument("--max_cond_blocks", type=int, default=5,
                        help="Maximum conditioning blocks (default: 5)")
-    parser.add_argument("--max_eval_blocks", type=int, default=3,
-                       help="Maximum evaluation blocks (default: 3)")
 
     return parser.parse_args()
 
@@ -186,10 +184,7 @@ def main():
         ),
         block_sizes_distribution=uniform_block_sizes_distribution,
         num_evaluation_distribution=num_evaluation_distribution,
-        num_eval_blocks_distribution=partial(
-            uniform_num_blocks_distribution,
-            max_blocks=args.max_eval_blocks
-        ),
+        num_eval_blocks_distribution=uniform_num_blocks_distribution,
         eval_block_sizes_distribution=uniform_block_sizes_distribution,
         conditioning_sampling='blockwise',
         evaluation_sampling='blockwise',

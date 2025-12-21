@@ -179,6 +179,7 @@ python3 ./train.py \\
     --evaluation_sampling blockwise \\
     --min_conditioning 0 \\
     --min_evaluation 1 \\
+    --max_cond_blocks 3 \\
     --mode2_boundary_cond_pct_min ${MODE2_MIN} \\
     --mode2_boundary_cond_pct_max ${MODE2_MAX} \\
     --use_attention_mask_for_valid \\

@@ -127,7 +127,6 @@ python3 ./train.py \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
     --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
     --ordering_mode temporal \
     --logging_steps 10 \
     --eval_steps 500 \

@@ -99,7 +99,6 @@ python3 ./train.py \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
     --max_cond_blocks 3 \
-    --max_eval_blocks 2 \
     --mode2_boundary_cond_pct_min 0.1 \
     --mode2_boundary_cond_pct_max 0.3 \
     --logging_steps 10 \

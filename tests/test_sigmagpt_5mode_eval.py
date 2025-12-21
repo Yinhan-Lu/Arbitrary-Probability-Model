@@ -50,7 +50,6 @@ def create_test_args():
         evaluation_sampling='blockwise',
         ordering_mode='temporal',
         max_cond_blocks=5,
-        max_eval_blocks=3,
 
         # Mode 2 boundary config
         mode2_boundary_cond_pct_min=0.1,

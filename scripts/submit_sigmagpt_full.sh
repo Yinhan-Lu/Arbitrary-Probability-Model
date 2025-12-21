@@ -77,7 +77,6 @@ MAX_GRAD_NORM=1.0
 # Conditioning configuration
 # Use blockwise sampling (default in ConditionalAugmenter)
 MAX_COND_BLOCKS=2
-MAX_EVAL_BLOCKS=1
 
 # Logging and checkpointing
 LOGGING_STEPS=100
@@ -111,7 +110,6 @@ echo ""
 echo "Conditioning:"
 echo "  Sampling: Blockwise"
 echo "  Max Cond Blocks: $MAX_COND_BLOCKS"
-echo "  Max Eval Blocks: $MAX_EVAL_BLOCKS"
 echo ""
 echo "Estimated Training Time:"
 echo "  ~5-7 days on A100"
@@ -137,7 +135,6 @@ python3 ./train.py \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
     --max_cond_blocks $MAX_COND_BLOCKS \
-    --max_eval_blocks $MAX_EVAL_BLOCKS \
     --logging_steps $LOGGING_STEPS \
     --eval_steps $EVAL_STEPS \
     --save_steps $SAVE_STEPS \

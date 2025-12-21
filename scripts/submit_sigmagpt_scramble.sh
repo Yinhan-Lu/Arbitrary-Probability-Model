@@ -35,7 +35,6 @@ python train_sigmagpt.py \
     --gradient_accumulation_steps 4 \
     --learning_rate 1e-4 \
     --max_cond_blocks 2 \
-    --max_eval_blocks 1 \
     --seed 42 \
     --num_workers 4 \
     --logging_steps 100 \

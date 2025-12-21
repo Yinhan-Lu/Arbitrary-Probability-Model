@@ -177,10 +177,7 @@ class SigmaGPTTrainer(BaseTrainer):
             ),
             block_sizes_distribution=uniform_block_sizes_distribution,
             num_evaluation_distribution=num_evaluation_distribution,
-            num_eval_blocks_distribution=partial(
-                uniform_num_blocks_distribution,
-                max_blocks=self.args.max_eval_blocks
-            ),
+            num_eval_blocks_distribution=uniform_num_blocks_distribution,
             eval_block_sizes_distribution=uniform_block_sizes_distribution,
             conditioning_sampling=self.args.conditioning_sampling,
             evaluation_sampling=self.args.evaluation_sampling,

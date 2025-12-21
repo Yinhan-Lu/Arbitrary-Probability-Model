@@ -60,10 +60,7 @@ class TestPrefixConditioning(unittest.TestCase):
                 uniform_num_blocks_distribution,
                 max_blocks=5
             ),
-            num_eval_blocks_distribution=partial(
-                uniform_num_blocks_distribution,
-                max_blocks=3
-            ),
+            num_eval_blocks_distribution=uniform_num_blocks_distribution,
             block_sizes_distribution=uniform_block_sizes_distribution,
             eval_block_sizes_distribution=uniform_block_sizes_distribution,
             min_conditioning=1,
@@ -303,10 +300,7 @@ class TestPrefixConditioning(unittest.TestCase):
                 uniform_num_blocks_distribution,
                 max_blocks=5
             ),
-            num_eval_blocks_distribution=partial(
-                uniform_num_blocks_distribution,
-                max_blocks=3
-            ),
+            num_eval_blocks_distribution=uniform_num_blocks_distribution,
             block_sizes_distribution=uniform_block_sizes_distribution,
             eval_block_sizes_distribution=uniform_block_sizes_distribution,
             conditioning_sampling='blockwise',

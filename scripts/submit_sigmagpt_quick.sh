@@ -73,7 +73,6 @@ MAX_GRAD_NORM=1.0
 
 # Conditioning configuration
 MAX_COND_BLOCKS=2
-MAX_EVAL_BLOCKS=1
 
 # Frequent logging for debugging
 # Note: Quick test only has ~7 steps, so use very small logging intervals
@@ -118,7 +117,6 @@ python3 ./train.py \
     --conditioning_sampling blockwise \
     --evaluation_sampling blockwise \
     --max_cond_blocks $MAX_COND_BLOCKS \
-    --max_eval_blocks $MAX_EVAL_BLOCKS \
     --logging_steps $LOGGING_STEPS \
     --eval_steps $EVAL_STEPS \
     --save_steps $SAVE_STEPS \
