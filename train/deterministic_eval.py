@@ -171,8 +171,6 @@ def generate_evaluation_splits(
         print(f"Augmenter configuration:")
         print(f"  - conditioning_sampling: {augmenter.conditioning_sampling}")
         print(f"  - evaluation_sampling: {augmenter.evaluation_sampling}")
-        print(f"  - max_cond_blocks: {augmenter.max_cond_blocks}")
-        print(f"  - max_eval_blocks: {augmenter.max_eval_blocks}")
 
     splits = {}
     num_samples = num_samples or len(dataset)

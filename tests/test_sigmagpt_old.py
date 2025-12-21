@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import torch
 import numpy as np
 import random
+from functools import partial
 from transformers import GPT2Tokenizer
 import time
 
@@ -101,15 +102,19 @@ def main():
         max_seq_len=config.max_seq_len,
         tokenizer_pad_token_id=tokenizer.pad_token_id,
         num_conditioning_distribution=create_conditioning_distribution(0.0, 0.4),
-        num_blocks_distribution=uniform_num_blocks_distribution,
+        num_blocks_distribution=partial(
+            uniform_num_blocks_distribution,
+            max_blocks=5  # Test with default limit
+        ),
         block_sizes_distribution=uniform_block_sizes_distribution,
         num_evaluation_distribution=create_evaluation_distribution(1.0, 1.0),
-        num_eval_blocks_distribution=uniform_num_blocks_distribution,
+        num_eval_blocks_distribution=partial(
+            uniform_num_blocks_distribution,
+            max_blocks=3  # Test with default limit
+        ),
         eval_block_sizes_distribution=uniform_block_sizes_distribution,
         conditioning_sampling='blockwise',
         evaluation_sampling='blockwise',
-        max_cond_blocks=3,
-        max_eval_blocks=2,
         ordering_mode='temporal',
     )
 

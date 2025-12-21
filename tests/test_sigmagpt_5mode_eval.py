@@ -48,9 +48,9 @@ def create_test_args():
         eval_pct_max=1.0,
         conditioning_sampling='blockwise',
         evaluation_sampling='blockwise',
-        max_cond_blocks=3,
-        max_eval_blocks=2,
         ordering_mode='temporal',
+        max_cond_blocks=5,
+        max_eval_blocks=3,
 
         # Mode 2 boundary config
         mode2_boundary_cond_pct_min=0.1,

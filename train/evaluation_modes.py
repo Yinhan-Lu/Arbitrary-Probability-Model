@@ -438,87 +438,108 @@ def evaluate_mode5_cross_training(logits_list, labels_list, eval_indices_list, a
     }
 
 
-def evaluate_all_modes(model, dataloader, device, augmenter, max_batches=None, trainer_args=None):
+def evaluate_all_modes(model, dataloader, device, augmenter=None, max_batches=None, trainer_args=None, modes=None):
     """
-    Orchestrator: Run all 5 evaluation modes
+    Orchestrator: Run selected evaluation modes
 
-    Execution order:
-    1. Mode 2 (record eval_indices_mode2)
-    2. Mode 3 (record eval_indices_mode3)
-    3. Mode 1 (record logits and labels)
-    4. Mode 4 (use Mode 1 logits + Mode 2 indices)
-    5. Mode 5 (use Mode 1 logits + Mode 3 indices)
+    Supports selective mode calling for flexibility:
+    - Mode 1: Autoregressive (no augmenter needed)
+    - Mode 2: Boundary filling (requires augmenter)
+    - Mode 3: Training distribution (requires augmenter)
+    - Mode 4: Cross-boundary (requires Mode 1 + Mode 2)
+    - Mode 5: Cross-training (requires Mode 1 + Mode 3)
 
     Args:
         model: The model to evaluate
         dataloader: Validation dataloader
         device: Device to run on
-        augmenter: Training augmenter
+        augmenter: Training augmenter (optional, required for modes 2,3,4,5)
         max_batches: Maximum number of batches to evaluate
         trainer_args: Trainer arguments containing Mode 2 boundary distribution parameters
+        modes: List of modes to run (default: [1,2,3,4,5])
 
     Returns:
-        dict with all metrics for 5 modes
+        dict with metrics for requested modes
     """
-    logger.info("Running 5-mode evaluation...")
+    if modes is None:
+        modes = [1, 2, 3, 4, 5]
 
-    # Mode 2: Boundary filling
-    logger.info("  Mode 2: Boundary filling...")
-    metrics_mode2 = evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_batches, trainer_args)
+    # Validate mode dependencies
+    if 4 in modes and (1 not in modes or 2 not in modes):
+        raise ValueError("Mode 4 requires Mode 1 and Mode 2")
+    if 5 in modes and (1 not in modes or 3 not in modes):
+        raise ValueError("Mode 5 requires Mode 1 and Mode 3")
+    if (2 in modes or 3 in modes) and augmenter is None:
+        raise ValueError("Modes 2 and 3 require augmenter")
 
-    # Mode 3: Training distribution
-    logger.info("  Mode 3: Training distribution...")
-    metrics_mode3 = evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batches)
+    logger.info(f"Running {len(modes)}-mode evaluation: {modes}...")
 
-    # Mode 1: Autoregressive
-    logger.info("  Mode 1: Autoregressive...")
-    metrics_mode1 = evaluate_mode1_autoregressive(model, dataloader, device, max_batches)
+    results = {}
+    metrics_mode1 = None
+    metrics_mode2 = None
+    metrics_mode3 = None
 
-    # Mode 4: Cross-boundary (reuse Mode 1 logits)
-    logger.info("  Mode 4: Cross-boundary...")
-    # Group eval_indices by batch for Mode 2
-    eval_indices_mode2_grouped = []
-    batch_size = metrics_mode1['labels_list'][0].shape[0] if len(metrics_mode1['labels_list']) > 0 else 0
-    for i in range(0, len(metrics_mode2['eval_indices_list']), batch_size):
-        eval_indices_mode2_grouped.append(metrics_mode2['eval_indices_list'][i:i+batch_size])
+    # Mode 2: Boundary filling (run first to get eval_indices for Mode 4)
+    if 2 in modes:
+        logger.info("  Mode 2: Boundary filling...")
+        metrics_mode2 = evaluate_mode2_boundary_filling(model, dataloader, device, augmenter, max_batches, trainer_args)
+        results['mode2_loss'] = metrics_mode2['loss']
+        results['mode2_ppl'] = metrics_mode2['perplexity']
+        results['mode2_tokens'] = metrics_mode2['total_tokens']
 
-    metrics_mode4 = evaluate_mode4_cross_boundary(
-        metrics_mode1['logits_list'],
-        metrics_mode1['labels_list'],
-        eval_indices_mode2_grouped,
-        metrics_mode1['attention_mask_list']  # Pass attention_mask for correct padding filtering
-    )
+    # Mode 3: Training distribution (run early to get eval_indices for Mode 5)
+    if 3 in modes:
+        logger.info("  Mode 3: Training distribution...")
+        metrics_mode3 = evaluate_mode3_training_dist(model, dataloader, device, augmenter, max_batches)
+        results['mode3_loss'] = metrics_mode3['loss']
+        results['mode3_ppl'] = metrics_mode3['perplexity']
+        results['mode3_tokens'] = metrics_mode3['total_tokens']
 
-    # Mode 5: Cross-training (reuse Mode 1 logits)
-    logger.info("  Mode 5: Cross-training...")
-    # Group eval_indices by batch for Mode 3
-    eval_indices_mode3_grouped = []
-    for i in range(0, len(metrics_mode3['eval_indices_list']), batch_size):
-        eval_indices_mode3_grouped.append(metrics_mode3['eval_indices_list'][i:i+batch_size])
+    # Mode 1: Autoregressive (needed for Mode 4 and 5 logits)
+    if 1 in modes:
+        logger.info("  Mode 1: Autoregressive...")
+        metrics_mode1 = evaluate_mode1_autoregressive(model, dataloader, device, max_batches)
+        results['mode1_loss'] = metrics_mode1['loss']
+        results['mode1_ppl'] = metrics_mode1['perplexity']
+        results['mode1_tokens'] = metrics_mode1['total_tokens']
+        results['num_batches'] = metrics_mode1['num_batches']
 
-    metrics_mode5 = evaluate_mode5_cross_training(
-        metrics_mode1['logits_list'],
-        metrics_mode1['labels_list'],
-        eval_indices_mode3_grouped,
-        metrics_mode1['attention_mask_list']  # Pass attention_mask for correct padding filtering
-    )
+    # Mode 4: Cross-boundary (reuse Mode 1 logits + Mode 2 indices)
+    if 4 in modes:
+        logger.info("  Mode 4: Cross-boundary...")
+        # Group eval_indices by batch for Mode 2
+        eval_indices_mode2_grouped = []
+        batch_size = metrics_mode1['labels_list'][0].shape[0] if len(metrics_mode1['labels_list']) > 0 else 0
+        for i in range(0, len(metrics_mode2['eval_indices_list']), batch_size):
+            eval_indices_mode2_grouped.append(metrics_mode2['eval_indices_list'][i:i+batch_size])
 
-    # Aggregate results
-    return {
-        'mode1_loss': metrics_mode1['loss'],
-        'mode1_ppl': metrics_mode1['perplexity'],
-        'mode1_tokens': metrics_mode1['total_tokens'],
-        'mode2_loss': metrics_mode2['loss'],
-        'mode2_ppl': metrics_mode2['perplexity'],
-        'mode2_tokens': metrics_mode2['total_tokens'],
-        'mode3_loss': metrics_mode3['loss'],
-        'mode3_ppl': metrics_mode3['perplexity'],
-        'mode3_tokens': metrics_mode3['total_tokens'],
-        'mode4_loss': metrics_mode4['loss'],
-        'mode4_ppl': metrics_mode4['perplexity'],
-        'mode4_tokens': metrics_mode4['total_tokens'],
-        'mode5_loss': metrics_mode5['loss'],
-        'mode5_ppl': metrics_mode5['perplexity'],
-        'mode5_tokens': metrics_mode5['total_tokens'],
-        'num_batches': metrics_mode1['num_batches'],
-    }
+        metrics_mode4 = evaluate_mode4_cross_boundary(
+            metrics_mode1['logits_list'],
+            metrics_mode1['labels_list'],
+            eval_indices_mode2_grouped,
+            metrics_mode1['attention_mask_list']
+        )
+        results['mode4_loss'] = metrics_mode4['loss']
+        results['mode4_ppl'] = metrics_mode4['perplexity']
+        results['mode4_tokens'] = metrics_mode4['total_tokens']
+
+    # Mode 5: Cross-training (reuse Mode 1 logits + Mode 3 indices)
+    if 5 in modes:
+        logger.info("  Mode 5: Cross-training...")
+        # Group eval_indices by batch for Mode 3
+        eval_indices_mode3_grouped = []
+        batch_size = metrics_mode1['labels_list'][0].shape[0] if len(metrics_mode1['labels_list']) > 0 else 0
+        for i in range(0, len(metrics_mode3['eval_indices_list']), batch_size):
+            eval_indices_mode3_grouped.append(metrics_mode3['eval_indices_list'][i:i+batch_size])
+
+        metrics_mode5 = evaluate_mode5_cross_training(
+            metrics_mode1['logits_list'],
+            metrics_mode1['labels_list'],
+            eval_indices_mode3_grouped,
+            metrics_mode1['attention_mask_list']
+        )
+        results['mode5_loss'] = metrics_mode5['loss']
+        results['mode5_ppl'] = metrics_mode5['perplexity']
+        results['mode5_tokens'] = metrics_mode5['total_tokens']
+
+    return results

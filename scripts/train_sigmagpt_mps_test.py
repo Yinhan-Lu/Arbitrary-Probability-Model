@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 import torch
 import torch.nn.functional as F
+from functools import partial
 from transformers import GPT2Tokenizer
 import time
 
@@ -102,15 +103,19 @@ augmenter = ConditionalAugmenter(
     bos_token_id=token_manager.bos_token_id,
     max_seq_len=config.max_seq_len,
     num_conditioning_distribution=uniform_num_conditioning_distribution,
-    num_blocks_distribution=uniform_num_blocks_distribution,
+    num_blocks_distribution=partial(
+        uniform_num_blocks_distribution,
+        max_blocks=5  # Test with default limit
+    ),
     block_sizes_distribution=uniform_block_sizes_distribution,
     num_evaluation_distribution=uniform_num_evaluation_distribution,
-    num_eval_blocks_distribution=uniform_num_blocks_distribution,
+    num_eval_blocks_distribution=partial(
+        uniform_num_blocks_distribution,
+        max_blocks=3  # Test with default limit
+    ),
     eval_block_sizes_distribution=uniform_block_sizes_distribution,
     conditioning_sampling='blockwise',
     evaluation_sampling='blockwise',
-    max_cond_blocks=2,
-    max_eval_blocks=1,
     tokenizer_pad_token_id=tokenizer.pad_token_id
 )
 print(f"✓ Augmenter initialized")

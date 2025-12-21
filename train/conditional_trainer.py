@@ -141,13 +141,19 @@ class ConditionalTrainer(BaseTrainer):
             uniform_num_conditioning_distribution,
             conditioning_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
         )
-        num_cond_blocks_dist = uniform_num_blocks_distribution
+        num_cond_blocks_dist = partial(
+            uniform_num_blocks_distribution,
+            max_blocks=self.args.max_cond_blocks
+        )
 
         num_eval_dist = partial(
             uniform_num_evaluation_distribution,
             evaluation_percentage_range=(self.args.eval_pct_min, self.args.eval_pct_max)
         )
-        num_eval_blocks_dist = uniform_num_blocks_distribution
+        num_eval_blocks_dist = partial(
+            uniform_num_blocks_distribution,
+            max_blocks=self.args.max_eval_blocks
+        )
 
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.mask_token_id,

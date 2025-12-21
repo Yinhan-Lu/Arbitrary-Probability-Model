@@ -474,14 +474,14 @@ def parse_args():
         parser.add_argument(
             "--max_cond_blocks",
             type=int,
-            default=3,
-            help="Maximum number of conditioning blocks"
+            default=5,
+            help="Maximum number of conditioning blocks (default: 5)"
         )
         parser.add_argument(
             "--max_eval_blocks",
             type=int,
-            default=2,
-            help="Maximum number of evaluation blocks"
+            default=3,
+            help="Maximum number of evaluation blocks (default: 3)"
         )
         # Distribution parameters (must match training config for fair comparison)
         parser.add_argument(

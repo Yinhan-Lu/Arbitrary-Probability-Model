@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from train.mask_utils import create_conditional_mask, validate_mask_indices
 from train.blockwise_sampling import (
-    generate_conditioning_set_blockwise,
     generate_conditioning_evaluation_sets_blockwise,
     uniform_num_conditioning_distribution,
     uniform_num_blocks_distribution,
@@ -61,8 +60,6 @@ class ConditionalAugmenter:
         include_bos=True,
         conditioning_sampling='blockwise',
         evaluation_sampling='blockwise',
-        max_cond_blocks=3,
-        max_eval_blocks=2,
         # NEW: Ordering mode for Sigma GPT (Eric's two methods)
         ordering_mode='temporal',
     ):
@@ -93,8 +90,7 @@ class ConditionalAugmenter:
             include_bos: Whether to prepend BOS token
             conditioning_sampling: Sampling mode for conditioning set - 'blockwise' or 'random'
             evaluation_sampling: Sampling mode for evaluation set - 'blockwise' or 'random'
-            max_cond_blocks: Maximum blocks for conditioning (when blockwise, default: 3)
-            max_eval_blocks: Maximum blocks for evaluation (when blockwise, default: 2)
+            ordering_mode: Ordering mode for Sigma GPT ('temporal' or 'random_scramble')
         """
         self.mask_token_id = mask_token_id
         self.bos_token_id = bos_token_id
@@ -129,8 +125,6 @@ class ConditionalAugmenter:
         # Store other parameters
         self.min_conditioning = min_conditioning
         self.min_evaluation = min_evaluation
-        self.max_cond_blocks = max_cond_blocks
-        self.max_eval_blocks = max_eval_blocks
 
         # NEW: Store ordering mode and convert to enum
         from train.ordering_modes import get_ordering_mode

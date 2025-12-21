@@ -56,8 +56,14 @@ class TestPrefixConditioning(unittest.TestCase):
             pad_token_id=self.pad_token_id,
             num_conditioning_distribution=num_cond_dist,
             num_evaluation_distribution=num_eval_dist,
-            num_blocks_distribution=uniform_num_blocks_distribution,
-            num_eval_blocks_distribution=uniform_num_blocks_distribution,
+            num_blocks_distribution=partial(
+                uniform_num_blocks_distribution,
+                max_blocks=5
+            ),
+            num_eval_blocks_distribution=partial(
+                uniform_num_blocks_distribution,
+                max_blocks=3
+            ),
             block_sizes_distribution=uniform_block_sizes_distribution,
             eval_block_sizes_distribution=uniform_block_sizes_distribution,
             min_conditioning=1,
@@ -276,15 +282,35 @@ class TestPrefixConditioning(unittest.TestCase):
         print("=" * 80)
 
         # Create augmenter with blockwise mode
+        from functools import partial
+        from train.blockwise_sampling import (
+            uniform_num_conditioning_distribution,
+            uniform_num_evaluation_distribution
+        )
+        
         blockwise_augmenter = ConditionalAugmenter(
             mask_token_id=self.mask_token_id,
             bos_token_id=self.bos_token_id,
-            conditioning_ratio=0.4,
-            evaluation_ratio=0.3,
+            num_conditioning_distribution=partial(
+                uniform_num_conditioning_distribution,
+                conditioning_percentage_range=(0.3, 0.5)
+            ),
+            num_evaluation_distribution=partial(
+                uniform_num_evaluation_distribution,
+                evaluation_percentage_range=(0.2, 0.4)
+            ),
+            num_blocks_distribution=partial(
+                uniform_num_blocks_distribution,
+                max_blocks=5
+            ),
+            num_eval_blocks_distribution=partial(
+                uniform_num_blocks_distribution,
+                max_blocks=3
+            ),
+            block_sizes_distribution=uniform_block_sizes_distribution,
+            eval_block_sizes_distribution=uniform_block_sizes_distribution,
             conditioning_sampling='blockwise',
-            evaluation_sampling='blockwise',
-            max_cond_blocks=2,
-            max_eval_blocks=2
+            evaluation_sampling='blockwise'
         )
 
         original_seq = torch.tensor([i for i in range(20)])

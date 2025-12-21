@@ -116,21 +116,33 @@ class DistilBertTrainer(BaseTrainer):
             uniform_num_evaluation_distribution,
             evaluation_percentage_range=(self.args.cond_pct_min, self.args.cond_pct_max)
         )
+        
+        # Create block distribution functions with limits
+        num_cond_blocks_dist = partial(
+            uniform_num_blocks_distribution,
+            max_blocks=self.args.max_cond_blocks
+        )
+        num_eval_blocks_dist = partial(
+            uniform_num_blocks_distribution,
+            max_blocks=self.args.max_eval_blocks
+        )
 
         class SimpleAugmenter:
             """Simple augmenter wrapper for BERT evaluation modes"""
-            def __init__(self, num_cond_dist, num_eval_dist):
+            def __init__(self, num_cond_dist, num_eval_dist, num_cond_blocks_dist, num_eval_blocks_dist):
                 self.num_cond_dist = num_cond_dist
                 self.num_eval_dist = num_eval_dist
+                self.num_cond_blocks_dist = num_cond_blocks_dist
+                self.num_eval_blocks_dist = num_eval_blocks_dist
 
             def split_indices(self, seq_len, valid_positions=None):
                 return generate_conditioning_evaluation_sets_blockwise(
                     seq_len=seq_len,
                     num_conditioning_distribution=self.num_cond_dist,
-                    num_blocks_distribution=uniform_num_blocks_distribution,
+                    num_blocks_distribution=self.num_cond_blocks_dist,
                     block_sizes_distribution=uniform_block_sizes_distribution,
                     num_evaluation_distribution=self.num_eval_dist,
-                    num_eval_blocks_distribution=uniform_num_blocks_distribution,
+                    num_eval_blocks_distribution=self.num_eval_blocks_dist,
                     eval_block_sizes_distribution=uniform_block_sizes_distribution,
                     valid_positions=valid_positions,
                 )
@@ -138,6 +150,8 @@ class DistilBertTrainer(BaseTrainer):
         self.augmenter = SimpleAugmenter(
             num_cond_dist=num_cond_dist,
             num_eval_dist=num_eval_dist,
+            num_cond_blocks_dist=num_cond_blocks_dist,
+            num_eval_blocks_dist=num_eval_blocks_dist
         )
 
 

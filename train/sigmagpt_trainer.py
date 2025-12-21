@@ -163,21 +163,27 @@ class SigmaGPTTrainer(BaseTrainer):
                    f"eval={self.args.eval_pct_min*100:.0f}%-{self.args.eval_pct_max*100:.0f}%")
 
         # Create ConditionalAugmenter with custom distribution functions
+        from functools import partial
+        
         self.augmenter = ConditionalAugmenter(
             mask_token_id=self.tokenizer.eos_token_id,  # Dummy (not actually used by Sigma GPT)
             bos_token_id=self.tokenizer.eos_token_id,    # BOS token for augmenter
             max_seq_len=self.config.max_seq_len,  # Use full sequence length
             tokenizer_pad_token_id=self.tokenizer.pad_token_id,
             num_conditioning_distribution=num_conditioning_distribution,
-            num_blocks_distribution=uniform_num_blocks_distribution,
+            num_blocks_distribution=partial(
+                uniform_num_blocks_distribution,
+                max_blocks=self.args.max_cond_blocks
+            ),
             block_sizes_distribution=uniform_block_sizes_distribution,
             num_evaluation_distribution=num_evaluation_distribution,
-            num_eval_blocks_distribution=uniform_num_blocks_distribution,
+            num_eval_blocks_distribution=partial(
+                uniform_num_blocks_distribution,
+                max_blocks=self.args.max_eval_blocks
+            ),
             eval_block_sizes_distribution=uniform_block_sizes_distribution,
             conditioning_sampling=self.args.conditioning_sampling,
             evaluation_sampling=self.args.evaluation_sampling,
-            max_cond_blocks=self.args.max_cond_blocks,
-            max_eval_blocks=self.args.max_eval_blocks,
             ordering_mode=self.args.ordering_mode,  # Eric's ordering modes: temporal or random_scramble
         )
         logger.info(f"ConditionalAugmenter initialized "

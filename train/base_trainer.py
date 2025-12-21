@@ -179,6 +179,38 @@ class BaseTrainer(ABC):
         """
         pass
 
+    # =========================================================================
+    # Training loop hooks (override for FP16/custom behavior)
+    # =========================================================================
+
+    def _backward(self, scaled_loss):
+        """
+        Backward pass - override for FP16 support
+
+        Args:
+            scaled_loss: Loss tensor (already scaled by gradient accumulation)
+        """
+        scaled_loss.backward()
+
+    def _clip_gradients(self):
+        """
+        Gradient clipping - override for FP16 unscaling
+
+        Called after backward, before optimizer step.
+        """
+        torch.nn.utils.clip_grad_norm_(
+            self.model.parameters(),
+            self.args.max_grad_norm
+        )
+
+    def _optimizer_step(self):
+        """
+        Optimizer step - override for FP16 scaler
+
+        Called after gradient clipping.
+        """
+        self.optimizer.step()
+
     def _setup_device(self, device_arg):
         """
         Setup computing device
@@ -339,21 +371,18 @@ class BaseTrainer(ABC):
 
                 # Scale loss by actual accumulated steps (HuggingFace standard)
                 scaled_loss = loss / num_accumulated
-                scaled_loss.backward()
+                self._backward(scaled_loss)
 
                 # Accumulate unscaled loss for logging
                 running_loss += loss.item()
                 running_batch_count += 1
 
                 if is_accum_step or is_last_batch:
-                    # Gradient clipping
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.args.max_grad_norm
-                    )
+                    # Gradient clipping (hook for FP16 unscaling)
+                    self._clip_gradients()
 
-                    # Optimizer step
-                    self.optimizer.step()
+                    # Optimizer step (hook for FP16 scaler)
+                    self._optimizer_step()
                     self.scheduler.step()
                     self.optimizer.zero_grad()
 

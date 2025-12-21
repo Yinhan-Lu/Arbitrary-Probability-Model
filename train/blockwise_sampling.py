@@ -409,22 +409,25 @@ def uniform_num_conditioning_distribution(
     return random.randint(min_cond, max_cond)
 
 
-def uniform_num_blocks_distribution(num_items: int) -> int:
+def uniform_num_blocks_distribution(num_items: int, max_blocks: int = None) -> int:
     """
     Sample number of blocks uniformly.
 
-    Original design: blocks can be anywhere from 1 to num_items.
-    No artificial max_blocks limit.
-
     Args:
         num_items: Number of items to distribute into blocks
+        max_blocks: Optional maximum number of blocks (default: None = no limit)
 
     Returns:
-        Number of blocks in range [1, num_items]
+        Number of blocks in range [1, min(max_blocks or num_items, num_items)]
     """
     if num_items == 0:
         return 1
-    return random.randint(1, num_items)
+    
+    upper_bound = num_items
+    if max_blocks is not None:
+        upper_bound = min(max_blocks, num_items)
+    
+    return random.randint(1, upper_bound)
 
 
 def uniform_block_sizes_distribution(
@@ -476,58 +479,6 @@ def uniform_num_evaluation_distribution(
 # =============================================================================
 # Convenience Functions
 # =============================================================================
-
-def generate_conditioning_set_blockwise(
-    seq_len: int,
-    conditioning_ratio: float = 0.3,
-    evaluation_ratio: float = 0.3,
-    min_conditioning: int = 1,
-    min_evaluation: int = 1,
-    max_cond_blocks: int = 3,
-    max_eval_blocks: int = 2,
-) -> tuple[list[int], list[int], list[int]]:
-    """
-    Convenience function with simple ratio-based configuration.
-
-    This provides backward compatibility with the old API.
-
-    Args:
-        seq_len: Sequence length
-        conditioning_ratio: Target ratio for conditioning (e.g., 0.3 = 30%)
-        evaluation_ratio: Target ratio for evaluation (e.g., 0.3 = 30%)
-        min_conditioning: Minimum conditioning tokens
-        min_evaluation: Minimum evaluation tokens
-        max_cond_blocks: Maximum blocks for conditioning
-        max_eval_blocks: Maximum blocks for evaluation
-
-    Returns:
-        Tuple of (conditioning_indices, evaluation_indices, unknown_indices)
-    """
-    # Define distributions based on ratios
-    def num_cond_dist(seq_len):
-        target = max(min_conditioning, int(seq_len * conditioning_ratio))
-        return min(target, seq_len - 1)
-
-    def num_cond_blocks_dist(num_cond):
-        return random.randint(1, min(max_cond_blocks, max(1, num_cond)))
-
-    def num_eval_dist(available_len):
-        target = max(min_evaluation, int(available_len * evaluation_ratio))
-        return min(target, available_len)
-
-    def num_eval_blocks_dist(num_eval):
-        return random.randint(1, min(max_eval_blocks, max(1, num_eval)))
-
-    return generate_conditioning_evaluation_sets_blockwise(
-        seq_len=seq_len,
-        num_conditioning_distribution=num_cond_dist,
-        num_blocks_distribution=num_cond_blocks_dist,
-        block_sizes_distribution=uniform_block_sizes_distribution,
-        num_evaluation_distribution=num_eval_dist,
-        num_eval_blocks_distribution=num_eval_blocks_dist,
-        eval_block_sizes_distribution=uniform_block_sizes_distribution,
-    )
-
 
 def uniform_boundary_block_sizes_distribution(
     seq_len: int,
@@ -699,20 +650,7 @@ if __name__ == "__main__":
     print(f"Unknown indices ({len(unknown)}): {unknown}")
     print("✓ Test 1 passed")
 
-    # Test 2: Convenience function (backward compatibility)
-    print("\n[Test 2] Backward compatible convenience function")
-    cond, eval_set, unknown = generate_conditioning_set_blockwise(
-        seq_len=15,
-        conditioning_ratio=0.3,
-        evaluation_ratio=0.4,
-        max_cond_blocks=2,
-        max_eval_blocks=2,
-    )
-    print(f"Sequence length: 15")
-    print(f"Conditioning ({len(cond)}): {cond}")
-    print(f"Evaluation ({len(eval_set)}): {eval_set}")
-    print(f"Unknown ({len(unknown)}): {unknown}")
-    print("✓ Test 2 passed")
+    # Test 2: Removed (tested deprecated convenience function)
 
     # Test 3: Check block structure
     print("\n[Test 3] Verify contiguous block structure")
@@ -743,32 +681,49 @@ if __name__ == "__main__":
     # Test 4: Multiple runs for randomness
     print("\n[Test 4] Randomness check (3 runs)")
     for run in range(3):
-        c, e, u = generate_conditioning_set_blockwise(
+        c, e, u = generate_conditioning_evaluation_sets_blockwise(
             seq_len=10,
-            conditioning_ratio=0.3,
-            evaluation_ratio=0.3,
+            num_conditioning_distribution=lambda l: uniform_num_conditioning_distribution(l, (0.2, 0.4)),
+            num_blocks_distribution=uniform_num_blocks_distribution,
+            block_sizes_distribution=uniform_block_sizes_distribution,
+            num_evaluation_distribution=lambda l: uniform_num_evaluation_distribution(l, (0.2, 0.4)),
+            num_eval_blocks_distribution=uniform_num_blocks_distribution,
+            eval_block_sizes_distribution=uniform_block_sizes_distribution,
         )
         print(f"Run {run+1}: Cond={c}, Eval={e}")
     print("✓ Test 4 passed")
 
-    # Test 5: Edge cases
-    print("\n[Test 5] Edge cases")
-
-    # Small sequence
-    c, e, u = generate_conditioning_set_blockwise(seq_len=5)
-    print(f"Small sequence (5): Cond={c}, Eval={e}")
-
-    # High conditioning ratio
-    c, e, u = generate_conditioning_set_blockwise(
-        seq_len=10, conditioning_ratio=0.7, evaluation_ratio=0.2
+    # Test 5: Block limit functionality
+    print("\n[Test 5] Testing max_blocks parameter")
+    from functools import partial
+    
+    # Test with max_blocks limit
+    c, e, u = generate_conditioning_evaluation_sets_blockwise(
+        seq_len=20,
+        num_conditioning_distribution=lambda l: uniform_num_conditioning_distribution(l, (0.3, 0.5)),
+        num_blocks_distribution=partial(uniform_num_blocks_distribution, max_blocks=3),
+        block_sizes_distribution=uniform_block_sizes_distribution,
+        num_evaluation_distribution=lambda l: uniform_num_evaluation_distribution(l, (0.3, 0.5)),
+        num_eval_blocks_distribution=partial(uniform_num_blocks_distribution, max_blocks=2),
+        eval_block_sizes_distribution=uniform_block_sizes_distribution,
     )
-    print(f"High cond ratio (0.7): Cond={c}, Eval={e}")
-
-    # Very small conditioning
-    c, e, u = generate_conditioning_set_blockwise(
-        seq_len=20, conditioning_ratio=0.1, evaluation_ratio=0.3
-    )
-    print(f"Small cond ratio (0.1): Cond={c}, Eval={e}")
+    
+    # Count blocks
+    def count_blocks(indices):
+        if not indices:
+            return 0
+        blocks = 1
+        for i in range(1, len(indices)):
+            if indices[i] != indices[i-1] + 1:
+                blocks += 1
+        return blocks
+    
+    cond_blocks = count_blocks(c)
+    eval_blocks = count_blocks(e)
+    print(f"Conditioning: {len(c)} tokens in {cond_blocks} blocks (max=3)")
+    print(f"Evaluation: {len(e)} tokens in {eval_blocks} blocks (max=2)")
+    assert cond_blocks <= 3, f"Conditioning blocks ({cond_blocks}) exceeded max (3)"
+    assert eval_blocks <= 2, f"Evaluation blocks ({eval_blocks}) exceeded max (2)"
     print("✓ Test 5 passed")
 
     print("\n" + "=" * 80)

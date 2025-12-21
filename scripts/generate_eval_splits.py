@@ -18,9 +18,7 @@ Usage:
         --cond_pct_min 0.0 \\
         --cond_pct_max 0.4 \\
         --eval_pct_min 1.0 \\
-        --eval_pct_max 1.0 \\
-        --max_cond_blocks 3 \\
-        --max_eval_blocks 2
+        --eval_pct_max 1.0
 """
 
 import sys
@@ -30,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import argparse
 import random
 import torch
+from functools import partial
 from datasets import load_dataset
 from transformers import AutoTokenizer
 
@@ -128,12 +127,12 @@ Examples:
                        help="Minimum evaluation percentage of unknown (default: 1.0 = 100%%)")
     parser.add_argument("--eval_pct_max", type=float, default=1.0,
                        help="Maximum evaluation percentage of unknown (default: 1.0 = 100%%)")
-
+    
     # Block configuration
-    parser.add_argument("--max_cond_blocks", type=int, default=3,
-                       help="Maximum conditioning blocks (default: 3)")
-    parser.add_argument("--max_eval_blocks", type=int, default=2,
-                       help="Maximum evaluation blocks (default: 2)")
+    parser.add_argument("--max_cond_blocks", type=int, default=5,
+                       help="Maximum conditioning blocks (default: 5)")
+    parser.add_argument("--max_eval_blocks", type=int, default=3,
+                       help="Maximum evaluation blocks (default: 3)")
 
     return parser.parse_args()
 
@@ -166,8 +165,6 @@ def main():
     print("\nDistribution configuration:")
     print(f"  Conditioning: {args.cond_pct_min*100:.0f}%-{args.cond_pct_max*100:.0f}%")
     print(f"  Evaluation: {args.eval_pct_min*100:.0f}%-{args.eval_pct_max*100:.0f}% of unknown")
-    print(f"  Max cond blocks: {args.max_cond_blocks}")
-    print(f"  Max eval blocks: {args.max_eval_blocks}")
 
     num_conditioning_distribution = create_conditioning_distribution(
         args.cond_pct_min, args.cond_pct_max
@@ -183,15 +180,19 @@ def main():
         bos_token_id=tokenizer.bos_token_id or tokenizer.eos_token_id,
         max_seq_len=1024,
         num_conditioning_distribution=num_conditioning_distribution,
-        num_blocks_distribution=uniform_num_blocks_distribution,
+        num_blocks_distribution=partial(
+            uniform_num_blocks_distribution,
+            max_blocks=args.max_cond_blocks
+        ),
         block_sizes_distribution=uniform_block_sizes_distribution,
         num_evaluation_distribution=num_evaluation_distribution,
-        num_eval_blocks_distribution=uniform_num_blocks_distribution,
+        num_eval_blocks_distribution=partial(
+            uniform_num_blocks_distribution,
+            max_blocks=args.max_eval_blocks
+        ),
         eval_block_sizes_distribution=uniform_block_sizes_distribution,
         conditioning_sampling='blockwise',
         evaluation_sampling='blockwise',
-        max_cond_blocks=args.max_cond_blocks,
-        max_eval_blocks=args.max_eval_blocks,
         tokenizer_pad_token_id=tokenizer.pad_token_id,
         ordering_mode='temporal'  # Doesn't matter for split generation
     )

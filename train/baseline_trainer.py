@@ -143,63 +143,59 @@ class BaselineTrainer(BaseTrainer):
     @torch.no_grad()
     def evaluate(self):
         """
-        Standard evaluation on validation set
+        Evaluation using Mode 1 (autoregressive) from unified evaluation framework
 
-        Computes average loss and perplexity over validation batches.
+        Uses evaluate_all_modes with modes=[1] for consistency with other trainers.
 
         Returns:
-            dict: Evaluation results containing "loss" and "perplexity"
+            dict: Evaluation results containing mode1_loss, mode1_ppl, and "loss" for compatibility
         """
-        self.model.eval()
-        total_loss = 0
-        num_batches = 0
+        from train.evaluation_modes import evaluate_all_modes
 
-        logger.info("Running evaluation...")
+        eval_results = evaluate_all_modes(
+            model=self.model,
+            dataloader=self.val_loader,
+            device=self.device,
+            augmenter=None,  # Baseline doesn't need augmenter
+            modes=[1],       # Only Mode 1 (autoregressive)
+            max_batches=getattr(self.args, 'max_eval_batches', None)
+        )
 
-        for batch in self.val_loader:
-            input_ids = batch["input_ids"].to(self.device)
-            attention_mask = batch["attention_mask"].to(self.device)
+        # Log results
+        logger.info(f"Mode 1 (Autoregressive): loss={eval_results['mode1_loss']:.4f}, ppl={eval_results['mode1_ppl']:.2f}")
 
-            # Prepare labels: set padding tokens to -100 so they're ignored in loss
-            labels = input_ids.clone()
-            labels[labels == self.tokenizer.pad_token_id] = -100
-
-            # Forward pass
-            logits, loss = self.model(input_ids, labels=labels)
-
-            total_loss += loss.item()
-            num_batches += 1
-
-            # Limit evaluation batches if specified
-            if self.args.max_eval_batches > 0 and num_batches >= self.args.max_eval_batches:
-                break
-
-        avg_loss = total_loss / num_batches
-        perplexity = torch.exp(torch.tensor(avg_loss)).item()
-
-        logger.info(f"Validation Loss: {avg_loss:.4f} | Validation PPL: {perplexity:.2f}")
+        # Set "loss" for best model selection (used by BaseTrainer)
+        eval_results["loss"] = eval_results["mode1_loss"]
+        eval_results["perplexity"] = eval_results["mode1_ppl"]
 
         self.model.train()
-
-        return {
-            "loss": avg_loss,
-            "perplexity": perplexity
-        }
+        return eval_results
 
     def get_csv_header(self):
         """
         Get CSV header for baseline model logging
 
+        Uses 5-mode format for compatibility with other trainers.
+        Only mode1 will have values, modes 2-5 will be empty.
+
         Returns:
-            list: Column names for standard baseline logging
+            list: Column names matching 5-mode format
         """
         return [
             "step",
             "epoch",
             "train_loss",
             "train_perplexity",
-            "val_loss",
-            "val_perplexity",
+            "mode1_loss",
+            "mode1_ppl",
+            "mode2_loss",
+            "mode2_ppl",
+            "mode3_loss",
+            "mode3_ppl",
+            "mode4_loss",
+            "mode4_ppl",
+            "mode5_loss",
+            "mode5_ppl",
             "learning_rate"
         ]
 
@@ -213,13 +209,21 @@ class BaselineTrainer(BaseTrainer):
             lr: Current learning rate
 
         Returns:
-            dict: Metrics dictionary with empty validation columns
+            dict: Metrics dictionary with empty evaluation columns
         """
         return {
             'train_loss': avg_loss,
             'train_perplexity': perplexity,
-            'val_loss': '',
-            'val_perplexity': '',
+            'mode1_loss': '',
+            'mode1_ppl': '',
+            'mode2_loss': '',
+            'mode2_ppl': '',
+            'mode3_loss': '',
+            'mode3_ppl': '',
+            'mode4_loss': '',
+            'mode4_ppl': '',
+            'mode5_loss': '',
+            'mode5_ppl': '',
             'learning_rate': lr
         }
 
@@ -228,124 +232,61 @@ class BaselineTrainer(BaseTrainer):
         Format evaluation metrics for CSV logging
 
         Args:
-            eval_results: Results from evaluate() containing loss and perplexity
+            eval_results: Results from evaluate() containing mode1 metrics
 
         Returns:
-            dict: Metrics dictionary with validation results
+            dict: Metrics dictionary with mode1 results, other modes empty
         """
         return {
             'train_loss': '',
             'train_perplexity': '',
-            'val_loss': eval_results['loss'],
-            'val_perplexity': eval_results['perplexity'],
+            'mode1_loss': eval_results['mode1_loss'],
+            'mode1_ppl': eval_results['mode1_ppl'],
+            'mode2_loss': '',
+            'mode2_ppl': '',
+            'mode3_loss': '',
+            'mode3_ppl': '',
+            'mode4_loss': '',
+            'mode4_ppl': '',
+            'mode5_loss': '',
+            'mode5_ppl': '',
             'learning_rate': self.optimizer.param_groups[0]["lr"]
         }
 
-    def train(self):
+    # =========================================================================
+    # FP16 Training Loop Hooks
+    # =========================================================================
+
+    def _backward(self, scaled_loss):
         """
-        Override train method to handle FP16-specific gradient operations
+        Backward pass with FP16 gradient scaling support
 
-        This override is needed because FP16 requires special handling:
-        - Gradient scaling for backward pass
-        - Unscaling before gradient clipping
-        - Scaler update after optimizer step
+        Args:
+            scaled_loss: Loss tensor (already scaled by gradient accumulation)
         """
-        logger.info("=" * 80)
-        logger.info("Starting Training")
-        logger.info("=" * 80)
-        logger.info(f"Model parameters: {self.model.get_num_params() / 1e6:.2f}M")
-        logger.info(f"Training samples: {len(self.train_loader.dataset) if hasattr(self.train_loader.dataset, '__len__') else 'unknown'}")
-        logger.info(f"Batch size: {self.args.batch_size}")
-        logger.info(f"Gradient accumulation steps: {self.args.gradient_accumulation_steps}")
-        logger.info(f"Effective batch size: {self.args.batch_size * self.args.gradient_accumulation_steps}")
-        logger.info(f"Number of epochs: {self.args.num_epochs}")
-        logger.info(f"Total training steps: {self.total_steps}")
-        logger.info("=" * 80)
+        if self.use_amp:
+            self.scaler.scale(scaled_loss).backward()
+        else:
+            scaled_loss.backward()
 
-        self.model.train()
-        running_loss = 0
-        running_batch_count = 0  # Track actual batch count for accurate averaging
-        self.optimizer.zero_grad()
+    def _clip_gradients(self):
+        """
+        Gradient clipping with FP16 unscaling
 
-        for epoch in range(self.args.num_epochs):
-            self.epoch = epoch
-            logger.info(f"\nEpoch {epoch + 1}/{self.args.num_epochs}")
+        Must unscale gradients before clipping when using FP16.
+        """
+        if self.use_amp:
+            self.scaler.unscale_(self.optimizer)
+        super()._clip_gradients()
 
-            for batch_idx, batch in enumerate(self.train_loader):
-                # Calculate accumulation flags FIRST (needed for loss scaling)
-                is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
-                is_last_batch = (batch_idx + 1) == len(self.train_loader)
+    def _optimizer_step(self):
+        """
+        Optimizer step with FP16 scaler support
 
-                # Calculate actual number of accumulated batches for this step
-                # (handles partial accumulation at epoch boundaries)
-                if is_last_batch and not is_accum_step:
-                    num_accumulated = (batch_idx % self.args.gradient_accumulation_steps) + 1
-                else:
-                    num_accumulated = self.args.gradient_accumulation_steps
-
-                # Training step (model-specific implementation)
-                loss = self.train_step(batch)
-
-                # Scale loss by actual accumulated steps (HuggingFace standard)
-                scaled_loss = loss / num_accumulated
-
-                # Backward pass (FP16-aware)
-                if self.use_amp:
-                    self.scaler.scale(scaled_loss).backward()
-                else:
-                    scaled_loss.backward()
-
-                # Accumulate unscaled loss for logging
-                running_loss += loss.item()
-                running_batch_count += 1
-
-                if is_accum_step or is_last_batch:
-                    # Gradient clipping (FP16-aware)
-                    if self.use_amp:
-                        self.scaler.unscale_(self.optimizer)
-
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.args.max_grad_norm
-                    )
-
-                    # Optimizer step (FP16-aware)
-                    if self.use_amp:
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                    else:
-                        self.optimizer.step()
-
-                    self.scheduler.step()
-                    self.optimizer.zero_grad()
-
-                    self.global_step += 1
-
-                    # Logging
-                    if self.global_step % self.args.logging_steps == 0:
-                        self._log_training_metrics(running_loss, running_batch_count)
-                        running_loss = 0
-                        running_batch_count = 0
-
-                    # Evaluation
-                    if self.args.do_eval and self.global_step % self.args.eval_steps == 0:
-                        logger.info(f"\nEvaluating at step {self.global_step}...")
-                        eval_results = self.evaluate()
-                        self._log_evaluation_metrics(eval_results)
-
-                        # Save best model
-                        if eval_results["loss"] < self.best_val_loss:
-                            self.best_val_loss = eval_results["loss"]
-                            logger.info(f"New best validation loss: {self.best_val_loss:.4f}")
-                            self._save_checkpoint("best_model")
-
-                        self.model.train()
-
-                    # Save checkpoint
-                    if self.global_step % self.args.save_steps == 0:
-                        self._save_checkpoint(f"checkpoint_step_{self.global_step}")
-
-        # Final checkpoint
-        logger.info("\nTraining completed!")
-        self._save_checkpoint("final_model")
-        logger.info(f"Final model saved to {self.checkpoint_dir / 'final_model.pt'}")
+        Uses scaler.step() and scaler.update() when using FP16.
+        """
+        if self.use_amp:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            super()._optimizer_step()
