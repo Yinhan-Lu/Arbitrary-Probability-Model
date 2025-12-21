@@ -368,12 +368,6 @@ def parse_args():
             default=5,
             help="Maximum number of conditioning blocks for blockwise sampling"
         )
-        parser.add_argument(
-            "--max_eval_blocks",
-            type=int,
-            default=3,
-            help="Maximum number of evaluation blocks for blockwise sampling"
-        )
 
         # Mode 2 (Boundary filling) evaluation parameters
         parser.add_argument(
