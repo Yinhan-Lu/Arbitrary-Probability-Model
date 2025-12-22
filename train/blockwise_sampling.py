@@ -428,6 +428,7 @@ def uniform_num_blocks_distribution(num_items: int, max_blocks: int = None) -> i
         upper_bound = min(max_blocks, num_items)
     
     return random.randint(1, upper_bound)
+    # return random.randint(1, num_items)
 
 
 def uniform_block_sizes_distribution(
@@ -694,21 +695,11 @@ if __name__ == "__main__":
     print("✓ Test 4 passed")
 
     # Test 5: Block limit functionality (only for conditioning)
+    # Use many tokens and small max_blocks to ensure limit is actually enforced
     print("\n[Test 5] Testing max_blocks parameter for conditioning")
     from functools import partial
-    
-    # Test with max_blocks limit for conditioning only
-    c, e, u = generate_conditioning_evaluation_sets_blockwise(
-        seq_len=20,
-        num_conditioning_distribution=lambda l: uniform_num_conditioning_distribution(l, (0.3, 0.5)),
-        num_blocks_distribution=partial(uniform_num_blocks_distribution, max_blocks=3),
-        block_sizes_distribution=uniform_block_sizes_distribution,
-        num_evaluation_distribution=lambda l: uniform_num_evaluation_distribution(l, (0.3, 0.5)),
-        num_eval_blocks_distribution=uniform_num_blocks_distribution,  # No limit
-        eval_block_sizes_distribution=uniform_block_sizes_distribution,
-    )
-    
-    # Count blocks
+
+    # Count blocks helper
     def count_blocks(indices):
         if not indices:
             return 0
@@ -717,12 +708,29 @@ if __name__ == "__main__":
             if indices[i] != indices[i-1] + 1:
                 blocks += 1
         return blocks
-    
-    cond_blocks = count_blocks(c)
-    eval_blocks = count_blocks(e)
-    print(f"Conditioning: {len(c)} tokens in {cond_blocks} blocks (max=3)")
-    print(f"Evaluation: {len(e)} tokens in {eval_blocks} blocks (unlimited)")
-    assert cond_blocks <= 3, f"Conditioning blocks ({cond_blocks}) exceeded max (3)"
+
+    # Run 10 times with 50 tokens and max_blocks=2
+    # Without the limit, 50 tokens would almost always produce >2 blocks
+    MAX_BLOCKS = 2
+    NUM_RUNS = 10
+    print(f"Running {NUM_RUNS} iterations with 50 conditioning tokens, max_blocks={MAX_BLOCKS}")
+
+    for i in range(NUM_RUNS):
+        c, e, u = generate_conditioning_evaluation_sets_blockwise(
+            seq_len=100,
+            num_conditioning_distribution=lambda l: 50,  # Fixed 50 tokens
+            num_blocks_distribution=partial(uniform_num_blocks_distribution, max_blocks=MAX_BLOCKS),
+            block_sizes_distribution=uniform_block_sizes_distribution,
+            num_evaluation_distribution=lambda l: 10,  # Fixed 10 eval tokens
+            num_eval_blocks_distribution=uniform_num_blocks_distribution,  # No limit
+            eval_block_sizes_distribution=uniform_block_sizes_distribution,
+        )
+
+        cond_blocks = count_blocks(c)
+        assert cond_blocks <= MAX_BLOCKS, \
+            f"Run {i+1}: Conditioning blocks ({cond_blocks}) exceeded max ({MAX_BLOCKS})"
+        print(f"  Run {i+1}: {len(c)} tokens in {cond_blocks} blocks ✓")
+
     print("✓ Test 5 passed")
 
     print("\n" + "=" * 80)
