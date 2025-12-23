@@ -12,12 +12,12 @@
 # Sweep Parameters:
 #   - eval_pct: 100%, 75%, 50%, 25% (controls real unseen ratio)
 #   - models: conditional, sigmagpt_temporal, sigmagpt_scramble
-#   - seeds: 42, 123, 456
+#   - seeds: 42
 #
 # Naming Format: {model}_c{cond}_e{eval}_b{blocks}_s{seed}
 # Example: cond_c30_e75_b3_s42
 #
-# Total: 3 models × 4 eval_pct × 3 seeds = 36 experiments
+# Total: 3 models × 4 eval_pct × 1 seed = 12 experiments
 #
 # Usage:
 #   ./scripts/submit_ablation_unseen_ratio.sh           # Submit all
@@ -68,7 +68,7 @@ declare -a SIGMAGPT_MODES=("" "temporal" "scramble")  # "" for conditional
 declare -a EVAL_PCTS=("1.0" "0.75" "0.50" "0.25")
 declare -a EVAL_LABELS=("e100" "e75" "e50" "e25")
 
-declare -a SEEDS=("42" "123" "456")
+declare -a SEEDS=("42")
 
 # Mode 2 boundary (fixed, based on 30% conditioning)
 MODE2_MIN=0.10
