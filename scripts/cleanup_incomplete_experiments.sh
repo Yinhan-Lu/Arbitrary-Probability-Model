@@ -127,7 +127,7 @@ while read -r prefix; do
         continue
     fi
 
-    ((total_prefixes++))
+    ((total_prefixes++)) || true
 
     # Count completed folders
     completed_count=$(grep "|true$" "$TMP_DIR/current_prefix.txt" | wc -l | tr -d ' ')
@@ -137,7 +137,7 @@ while read -r prefix; do
         echo -e "[PREFIX: ${BLUE}$prefix${NC}]"
         echo -e "  ${YELLOW}SKIP${NC}: No completed experiment (0/${folder_count} have plots or plots_individual)"
         echo ""
-        ((total_skipped++))
+        ((total_skipped++)) || true
         continue
     fi
 
@@ -148,11 +148,11 @@ while read -r prefix; do
     while IFS='|' read -r p folder_name completed; do
         if [[ "$completed" == "true" ]]; then
             echo -e "  ${GREEN}KEEP${NC}:   $folder_name (completed)"
-            ((total_to_keep++))
+            ((total_to_keep++)) || true
         else
             echo -e "  ${RED}DELETE${NC}: $folder_name (incomplete)"
             echo "$EXPERIMENTS_DIR/$folder_name" >> "$TMP_DIR/to_delete.txt"
-            ((total_to_delete++))
+            ((total_to_delete++)) || true
         fi
     done < "$TMP_DIR/current_prefix.txt"
     echo ""
