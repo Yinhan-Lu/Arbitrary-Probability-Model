@@ -23,6 +23,7 @@ Usage:
 import sys
 import argparse
 import json
+import re
 from pathlib import Path
 
 # Add project root to path
@@ -72,6 +73,12 @@ METRIC_PRESETS = {
         'mode4_loss', 'mode4_ppl',
         'mode5_loss', 'mode5_ppl',
     ],
+}
+
+# Special models that only show specific modes (others show "-")
+# This is used to filter out inapplicable metrics for certain baselines
+SPECIAL_MODEL_MODES = {
+    'bert_baseline_cond_0-40': [2, 3],  # Only mode2 and mode3 are applicable
 }
 
 
@@ -188,6 +195,15 @@ def build_table_data(metrics_data, selected_metrics=None):
     for model in models:
         row = [model]
         for metric_name in metric_names:
+            # Check if this model has mode restrictions
+            allowed_modes = SPECIAL_MODEL_MODES.get(model)
+            if allowed_modes:
+                # Extract mode number from metric name (e.g., 'mode2_ppl' -> 2)
+                mode_match = re.match(r'mode(\d+)', metric_name)
+                if mode_match and int(mode_match.group(1)) not in allowed_modes:
+                    row.append('-')
+                    continue
+
             value = metrics.get(metric_name, {}).get(model)
             if value is not None:
                 # Format number with appropriate precision

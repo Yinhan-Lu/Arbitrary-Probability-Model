@@ -13,6 +13,7 @@ Usage:
 import sys
 import argparse
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -47,6 +48,12 @@ MODE_TITLES = {
     3: 'Mode 3: Training Distribution',
     4: 'Mode 4: Mode 2 Eval Set with Mode 1 Logits',
     5: 'Mode 5: Mode 3 Eval Set with Mode 1 Logits',
+}
+
+# Special models that only appear in specific mode plots
+# These models are skipped for modes not in their allowed list
+SPECIAL_MODEL_MODES = {
+    'bert_baseline_cond_0-40': [2, 3],  # Only mode2 and mode3 plots
 }
 
 
@@ -253,6 +260,11 @@ def compare_mode_loss(experiments_data, mode_num, output_dir):
     plt.figure(figsize=(12, 7))
 
     for i, (df, exp_name, label) in enumerate(experiments_data):
+        # Skip special models for modes not in their allowed list
+        allowed_modes = SPECIAL_MODEL_MODES.get(label)
+        if allowed_modes and mode_num not in allowed_modes:
+            continue
+
         if loss_col not in df.columns or df[loss_col].isna().all():
             continue
         data = df[['step', loss_col]].dropna()
@@ -292,6 +304,11 @@ def compare_mode_perplexity(experiments_data, mode_num, output_dir):
     plt.figure(figsize=(12, 7))
 
     for i, (df, exp_name, label) in enumerate(experiments_data):
+        # Skip special models for modes not in their allowed list
+        allowed_modes = SPECIAL_MODEL_MODES.get(label)
+        if allowed_modes and mode_num not in allowed_modes:
+            continue
+
         if ppl_col not in df.columns or df[ppl_col].isna().all():
             continue
         data = df[['step', ppl_col]].dropna()
@@ -462,6 +479,14 @@ def collect_final_metrics(experiments_data):
         metric_values = {}
 
         for df, exp_name, label in experiments_data:
+            # Skip special models for modes not in their allowed list
+            allowed_modes = SPECIAL_MODEL_MODES.get(label)
+            if allowed_modes:
+                # Extract mode number from metric name (e.g., 'mode2_ppl' -> 2)
+                mode_match = re.match(r'mode(\d+)', metric_name)
+                if mode_match and int(mode_match.group(1)) not in allowed_modes:
+                    continue
+
             if metric_name in df.columns:
                 data = df[metric_name].dropna()
                 if len(data) > 0:
