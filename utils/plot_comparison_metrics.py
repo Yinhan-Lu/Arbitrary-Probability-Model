@@ -502,8 +502,14 @@ def collect_final_metrics(experiments_data):
     return final_metrics
 
 
-def plot_all_comparisons(exp_dirs, output_base_dir=None):
-    """Generate all comparison plots for given experiments."""
+def plot_all_comparisons(exp_dirs, output_base_dir=None, custom_name=None):
+    """Generate all comparison plots for given experiments.
+
+    Args:
+        exp_dirs: List of experiment directory paths
+        output_base_dir: Base directory for output (default: comparison_between_experiments/)
+        custom_name: Custom name for output folder (default: YYYYMMDD_HHMMSS timestamp)
+    """
     # Determine output directory
     if output_base_dir is None:
         project_root = Path(__file__).parent.parent
@@ -511,9 +517,12 @@ def plot_all_comparisons(exp_dirs, output_base_dir=None):
 
     output_base_dir = Path(output_base_dir)
 
-    # Create timestamped subdirectory
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = output_base_dir / timestamp
+    # Create output subdirectory (custom name or timestamp)
+    if custom_name:
+        output_dir = output_base_dir / custom_name
+    else:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_dir = output_base_dir / timestamp
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
@@ -648,6 +657,10 @@ Examples:
   # Compare 3 experiments
   python utils/plot_comparison_metrics.py experiments/exp1 experiments/exp2 experiments/exp3
 
+  # Custom output folder name
+  python utils/plot_comparison_metrics.py experiments/exp1 experiments/exp2 --name my_comparison
+  python utils/plot_comparison_metrics.py experiments/exp1 experiments/exp2 -n bert_vs_gpt
+
   # Limit rows per experiment using :N syntax
   python utils/plot_comparison_metrics.py experiments/exp1:100 experiments/exp2:200
 
@@ -655,7 +668,8 @@ Examples:
   python utils/plot_comparison_metrics.py experiments/exp1:100 experiments/exp2 experiments/exp3:300
 
 Output:
-  comparison_between_experiments/YYYYMMDD_HHMMSS/
+  comparison_between_experiments/YYYYMMDD_HHMMSS/  (default)
+  comparison_between_experiments/<custom_name>/    (with --name)
     - compare_train_loss.png
     - compare_train_perplexity.png
     - compare_learning_rate.png
@@ -672,6 +686,8 @@ Output:
                        help='Paths to experiment directories (at least 2). '
                             'Optionally add :N to limit to first N rows '
                             '(e.g., experiments/exp1:100)')
+    parser.add_argument('--name', '-n', type=str,
+                       help='Custom name for output folder (default: YYYYMMDD_HHMMSS)')
 
     args = parser.parse_args()
 
@@ -679,7 +695,7 @@ Output:
         print("Error: Please provide at least 2 experiment directories to compare")
         sys.exit(1)
 
-    plot_all_comparisons(args.experiments)
+    plot_all_comparisons(args.experiments, custom_name=args.name)
 
 
 if __name__ == '__main__':
