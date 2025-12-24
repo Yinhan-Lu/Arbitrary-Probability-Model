@@ -58,6 +58,19 @@ DEFAULT_METRICS = [
     'mode5_ppl',
 ]
 
+# Metric presets for convenience
+METRIC_PRESETS = {
+    'ppl': ['mode1_ppl', 'mode2_ppl', 'mode3_ppl', 'mode4_ppl', 'mode5_ppl'],
+    'loss': ['mode1_loss', 'mode2_loss', 'mode3_loss', 'mode4_loss', 'mode5_loss'],
+    'all': [
+        'mode1_loss', 'mode1_ppl',
+        'mode2_loss', 'mode2_ppl',
+        'mode3_loss', 'mode3_ppl',
+        'mode4_loss', 'mode4_ppl',
+        'mode5_loss', 'mode5_ppl',
+    ],
+}
+
 
 def load_final_metrics(comparison_dir):
     """Load final_metrics.json from comparison directory.
@@ -308,8 +321,12 @@ def generate_table_figure(headers, rows, output_path, title=None, highlight_best
             else:
                 best_indices.append(None)
 
-    # Create figure
-    fig_width = max(10, 1.5 * num_cols)
+    # Calculate max model name length for dynamic sizing
+    max_model_len = max(len(str(row[0])) for row in rows) if rows else 10
+    model_col_width = max(3, max_model_len * 0.12)  # Scale factor for width
+
+    # Create figure with dynamic width based on content
+    fig_width = max(12, model_col_width + 1.2 * (num_cols - 1))
     fig_height = max(3, 0.6 * (num_rows + 1))
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     ax.axis('off')
@@ -325,8 +342,11 @@ def generate_table_figure(headers, rows, output_path, title=None, highlight_best
 
     # Style the table
     table.auto_set_font_size(False)
-    table.set_fontsize(14)
+    table.set_fontsize(12)
     table.scale(1.2, 2.0)
+
+    # Auto-fit column widths based on content
+    table.auto_set_column_width(col=list(range(num_cols)))
 
     # Style header row
     for j in range(num_cols):
@@ -389,11 +409,17 @@ Examples:
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure --title "Model Comparison"
 
+  # Use presets for PPL or Loss (generates separate figures)
+  python utils/generate_metrics_table.py ... --format figure --preset ppl -o table_ppl.png
+  python utils/generate_metrics_table.py ... --format figure --preset loss -o table_loss.png
+
   # Select specific metrics
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --metrics mode1_ppl mode3_ppl
 
   # Show all available metrics
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --all-metrics
+
+Presets: ppl (default), loss, all
 
 Available metrics:
   - train_loss, train_perplexity
@@ -411,10 +437,14 @@ Available metrics:
                        choices=['console', 'markdown', 'latex', 'figure'],
                        default='console',
                        help='Output format (default: console, use "figure" for PNG)')
+    parser.add_argument('--preset', '-p', type=str,
+                       choices=['ppl', 'loss', 'all'],
+                       default='ppl',
+                       help='Metric preset: ppl (default), loss, or all')
     parser.add_argument('--metrics', '-m', type=str, nargs='+',
-                       help='Specific metrics to include (default: mode perplexities)')
+                       help='Specific metrics to include (overrides preset)')
     parser.add_argument('--all-metrics', '-a', action='store_true',
-                       help='Include all available metrics')
+                       help='Include all available metrics (overrides preset)')
     parser.add_argument('--output', '-o', type=str,
                        help='Output file path (default: print to stdout, or metrics_table.png for figure)')
     parser.add_argument('--title', '-t', type=str,
@@ -428,13 +458,13 @@ Available metrics:
         # Load data
         data = load_final_metrics(args.comparison_dir)
 
-        # Determine metrics to show
+        # Determine metrics to show (priority: --all-metrics > --metrics > --preset)
         if args.all_metrics:
             selected_metrics = None  # Will use all available
         elif args.metrics:
             selected_metrics = args.metrics
         else:
-            selected_metrics = DEFAULT_METRICS
+            selected_metrics = METRIC_PRESETS.get(args.preset, DEFAULT_METRICS)
 
         # Build table
         headers, rows, metric_names = build_table_data(data, selected_metrics)
