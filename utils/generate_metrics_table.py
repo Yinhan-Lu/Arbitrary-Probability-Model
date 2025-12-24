@@ -6,10 +6,15 @@ Reads final_metrics.json from a comparison folder and outputs a formatted table
 where rows are models and columns are metrics.
 
 Usage:
+    # Text formats
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format markdown
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format latex
-    python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --metrics mode1_ppl mode3_ppl mode5_ppl
+
+    # Figure formats (for slides)
+    python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure
+    python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format heatmap
+    python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format bar
 """
 
 import sys
@@ -19,6 +24,11 @@ from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 # Metric display names for better readability
@@ -254,6 +264,112 @@ def format_latex_table(headers, rows, metric_names):
     return '\n'.join(lines)
 
 
+def generate_table_figure(headers, rows, output_path, title=None, highlight_best=True):
+    """Generate a styled table as PNG image for slides.
+
+    Args:
+        headers: List of column headers
+        rows: List of row data (first column is model name, rest are values)
+        output_path: Path to save the PNG file
+        title: Optional title for the table
+        highlight_best: Whether to highlight best values per column (green)
+
+    Returns:
+        Path to saved file
+    """
+    # Parse numeric values for highlighting
+    num_cols = len(headers)
+    num_rows = len(rows)
+
+    # Convert string values to floats where possible
+    numeric_data = []
+    for row in rows:
+        row_values = []
+        for i, val in enumerate(row[1:], 1):  # Skip model name
+            try:
+                row_values.append(float(val))
+            except (ValueError, TypeError):
+                row_values.append(None)
+        numeric_data.append(row_values)
+
+    # Find best (minimum) value per column for highlighting
+    best_indices = []
+    if highlight_best and numeric_data:
+        for col_idx in range(num_cols - 1):
+            col_values = [row[col_idx] for row in numeric_data if row[col_idx] is not None]
+            if col_values:
+                min_val = min(col_values)
+                best_idx = None
+                for row_idx, row in enumerate(numeric_data):
+                    if row[col_idx] == min_val:
+                        best_idx = row_idx
+                        break
+                best_indices.append(best_idx)
+            else:
+                best_indices.append(None)
+
+    # Create figure
+    fig_width = max(10, 1.5 * num_cols)
+    fig_height = max(3, 0.6 * (num_rows + 1))
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    ax.axis('off')
+
+    # Create table
+    table = ax.table(
+        cellText=rows,
+        colLabels=headers,
+        cellLoc='center',
+        loc='center',
+        colColours=['#4472C4'] * num_cols,  # Header background (blue)
+    )
+
+    # Style the table
+    table.auto_set_font_size(False)
+    table.set_fontsize(14)
+    table.scale(1.2, 2.0)
+
+    # Style header row
+    for j in range(num_cols):
+        cell = table[(0, j)]
+        cell.set_text_props(weight='bold', color='white')
+        cell.set_facecolor('#4472C4')
+        cell.set_height(0.15)
+
+    # Style data rows
+    for i in range(num_rows):
+        for j in range(num_cols):
+            cell = table[(i + 1, j)]
+
+            # Alternate row colors
+            if i % 2 == 0:
+                cell.set_facecolor('#D6DCE5')
+            else:
+                cell.set_facecolor('#FFFFFF')
+
+            # Model name column (first column) - left align, bold
+            if j == 0:
+                cell.set_text_props(weight='bold', ha='left')
+                cell.get_text().set_position((0.05, 0.5))
+            else:
+                # Highlight best values (green background, bold)
+                if highlight_best and j - 1 < len(best_indices):
+                    if best_indices[j - 1] == i:
+                        cell.set_facecolor('#C6EFCE')  # Light green
+                        cell.set_text_props(weight='bold', color='#006100')
+
+    # Add title if provided
+    if title:
+        plt.title(title, fontsize=16, fontweight='bold', pad=20)
+
+    # Save figure
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    plt.close()
+
+    return output_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Generate metrics table from comparison results',
@@ -268,6 +384,10 @@ Examples:
 
   # LaTeX format
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format latex
+
+  # PNG figure for slides (best practice for presentations)
+  python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure
+  python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure --title "Model Comparison"
 
   # Select specific metrics
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --metrics mode1_ppl mode3_ppl
@@ -288,15 +408,19 @@ Available metrics:
     parser.add_argument('comparison_dir', type=str,
                        help='Path to comparison results folder')
     parser.add_argument('--format', '-f', type=str,
-                       choices=['console', 'markdown', 'latex'],
+                       choices=['console', 'markdown', 'latex', 'figure'],
                        default='console',
-                       help='Output format (default: console)')
+                       help='Output format (default: console, use "figure" for PNG)')
     parser.add_argument('--metrics', '-m', type=str, nargs='+',
                        help='Specific metrics to include (default: mode perplexities)')
     parser.add_argument('--all-metrics', '-a', action='store_true',
                        help='Include all available metrics')
     parser.add_argument('--output', '-o', type=str,
-                       help='Output file path (default: print to stdout)')
+                       help='Output file path (default: print to stdout, or metrics_table.png for figure)')
+    parser.add_argument('--title', '-t', type=str,
+                       help='Title for figure format')
+    parser.add_argument('--no-highlight', action='store_true',
+                       help='Disable highlighting of best values in figure format')
 
     args = parser.parse_args()
 
@@ -319,7 +443,27 @@ Available metrics:
             print("No data found in final_metrics.json")
             return
 
-        # Format output
+        # Handle figure format separately
+        if args.format == 'figure':
+            # Determine output path
+            if args.output:
+                output_path = Path(args.output)
+            else:
+                output_path = Path(args.comparison_dir) / 'metrics_table.png'
+
+            # Generate figure
+            generate_table_figure(
+                headers, rows, output_path,
+                title=args.title,
+                highlight_best=not args.no_highlight
+            )
+            print(f"Table figure saved to: {output_path}")
+            print(f"  - Models: {len(rows)}")
+            print(f"  - Metrics: {len(headers) - 1}")
+            print(f"  - Best values highlighted: {not args.no_highlight}")
+            return
+
+        # Format text output
         if args.format == 'console':
             output = format_console_table(headers, rows)
         elif args.format == 'markdown':
