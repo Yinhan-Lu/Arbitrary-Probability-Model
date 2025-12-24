@@ -405,13 +405,13 @@ Examples:
   # LaTeX format
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format latex
 
-  # PNG figure for slides (best practice for presentations)
+  # PNG figure for slides (default: generates BOTH ppl and loss figures)
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure
-  python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure --title "Model Comparison"
+  # Output: metrics_table_ppl.png, metrics_table_loss.png
 
-  # Use presets for PPL or Loss (generates separate figures)
-  python utils/generate_metrics_table.py ... --format figure --preset ppl -o table_ppl.png
-  python utils/generate_metrics_table.py ... --format figure --preset loss -o table_loss.png
+  # Generate single figure with specific preset
+  python utils/generate_metrics_table.py ... --format figure -o my_table.png
+  python utils/generate_metrics_table.py ... --format figure --metrics mode1_ppl mode3_ppl -o custom.png
 
   # Select specific metrics
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --metrics mode1_ppl mode3_ppl
@@ -475,22 +475,45 @@ Available metrics:
 
         # Handle figure format separately
         if args.format == 'figure':
-            # Determine output path
-            if args.output:
-                output_path = Path(args.output)
-            else:
-                output_path = Path(args.comparison_dir) / 'metrics_table.png'
+            comparison_path = Path(args.comparison_dir)
 
-            # Generate figure
-            generate_table_figure(
-                headers, rows, output_path,
-                title=args.title,
-                highlight_best=not args.no_highlight
-            )
-            print(f"Table figure saved to: {output_path}")
-            print(f"  - Models: {len(rows)}")
-            print(f"  - Metrics: {len(headers) - 1}")
-            print(f"  - Best values highlighted: {not args.no_highlight}")
+            # If user specified --output or --metrics, generate single figure
+            if args.output or args.metrics or args.all_metrics:
+                if args.output:
+                    output_path = Path(args.output)
+                else:
+                    output_path = comparison_path / 'metrics_table.png'
+
+                generate_table_figure(
+                    headers, rows, output_path,
+                    title=args.title,
+                    highlight_best=not args.no_highlight
+                )
+                print(f"Table figure saved to: {output_path}")
+                print(f"  - Models: {len(rows)}")
+                print(f"  - Metrics: {len(headers) - 1}")
+                print(f"  - Best values highlighted: {not args.no_highlight}")
+            else:
+                # Default: generate both PPL and Loss figures
+                for preset_name in ['ppl', 'loss']:
+                    preset_metrics = METRIC_PRESETS[preset_name]
+                    h, r, _ = build_table_data(data, preset_metrics)
+
+                    output_path = comparison_path / f'metrics_table_{preset_name}.png'
+                    title = f"{'Perplexity' if preset_name == 'ppl' else 'Loss'} Comparison"
+
+                    generate_table_figure(
+                        h, r, output_path,
+                        title=title,
+                        highlight_best=not args.no_highlight
+                    )
+                    print(f"Table figure saved to: {output_path}")
+
+                print(f"\nGenerated 2 figures:")
+                print(f"  - metrics_table_ppl.png (Perplexity)")
+                print(f"  - metrics_table_loss.png (Loss)")
+                print(f"  - Models: {len(rows)}")
+                print(f"  - Best values highlighted: {not args.no_highlight}")
             return
 
         # Format text output
