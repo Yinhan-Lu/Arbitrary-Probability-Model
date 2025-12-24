@@ -194,3 +194,5 @@ archive/
 # Plots (visualization outputs)
 plots/
 comparison_between_experiments/
+
+old_experiments/
