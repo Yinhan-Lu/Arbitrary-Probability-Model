@@ -2,19 +2,22 @@
 """
 Generate metrics table from comparison results.
 
-Reads final_metrics.json from a comparison folder and outputs a formatted table
-where rows are models and columns are metrics.
+Reads final_metrics.json from one or more comparison folders and outputs a formatted
+table where rows are models and columns are metrics. Supports cross-experiment
+merging with "latest wins" deduplication for models with the same name.
 
 Usage:
-    # Text formats
+    # Single comparison directory
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format markdown
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format latex
 
+    # Multiple comparison directories (merged with deduplication)
+    python utils/generate_metrics_table.py comp1/20241224_123456 comp2/20241225_123456
+    python utils/generate_metrics_table.py comp1 comp2 comp3 --format figure
+
     # Figure formats (for slides)
     python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format figure
-    python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format heatmap
-    python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format bar
 """
 
 import sys
@@ -91,6 +94,50 @@ def load_final_metrics(comparison_dir):
         data = json.load(f)
 
     return data
+
+
+def load_and_merge_metrics(comparison_dirs):
+    """Load and merge final_metrics.json from multiple comparison directories.
+
+    Uses "latest wins" strategy: if a model appears in multiple comparisons,
+    the value from the later (rightmost) comparison directory is used.
+
+    Args:
+        comparison_dirs: List of comparison directory paths
+
+    Returns:
+        Tuple of (merged_data, duplicate_info) where:
+        - merged_data: {'metrics': {...}} with all unique models
+        - duplicate_info: List of (model_label, overwritten_by_dir) tuples
+    """
+    merged_metrics = {}
+    model_sources = {}  # Track which dir each model came from
+    duplicates = []  # Track overwritten models
+
+    for comp_dir in comparison_dirs:
+        data = load_final_metrics(comp_dir)
+        metrics = data.get('metrics', {})
+
+        # Collect all models in this comparison
+        models_in_this_dir = set()
+        for model_values in metrics.values():
+            models_in_this_dir.update(model_values.keys())
+
+        # Check for duplicates before overwriting
+        for model_label in models_in_this_dir:
+            if model_label in model_sources:
+                duplicates.append((model_label, comp_dir))
+
+        # Merge metrics (latest wins)
+        for metric_name, model_values in metrics.items():
+            if metric_name not in merged_metrics:
+                merged_metrics[metric_name] = {}
+
+            for model_label, value in model_values.items():
+                merged_metrics[metric_name][model_label] = value
+                model_sources[model_label] = comp_dir
+
+    return {'metrics': merged_metrics}, duplicates
 
 
 def build_table_data(metrics_data, selected_metrics=None):
@@ -399,6 +446,10 @@ Examples:
   # Basic usage (console table with default metrics)
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456
 
+  # Multiple comparison directories (merged with "latest wins" deduplication)
+  python utils/generate_metrics_table.py comp1/20241224_123456 comp2/20241225_123456
+  python utils/generate_metrics_table.py dir1 dir2 dir3 --format figure
+
   # Markdown format
   python utils/generate_metrics_table.py comparison_between_experiments/20241224_123456 --format markdown
 
@@ -421,6 +472,9 @@ Examples:
 
 Presets: ppl (default), loss, all
 
+Deduplication: When merging multiple directories, if the same model label appears
+in multiple comparisons, the value from the LAST directory (rightmost) is used.
+
 Available metrics:
   - train_loss, train_perplexity
   - mode1_loss, mode1_ppl (Autoregressive)
@@ -431,8 +485,9 @@ Available metrics:
         """
     )
 
-    parser.add_argument('comparison_dir', type=str,
-                       help='Path to comparison results folder')
+    parser.add_argument('comparison_dirs', type=str, nargs='+',
+                       help='Path(s) to comparison results folder(s). '
+                            'Multiple dirs are merged with "latest wins" deduplication.')
     parser.add_argument('--format', '-f', type=str,
                        choices=['console', 'markdown', 'latex', 'figure'],
                        default='console',
@@ -455,8 +510,40 @@ Available metrics:
     args = parser.parse_args()
 
     try:
-        # Load data
-        data = load_final_metrics(args.comparison_dir)
+        # Load data from one or more comparison directories
+        if len(args.comparison_dirs) == 1:
+            # Single directory - use simple loader
+            data = load_final_metrics(args.comparison_dirs[0])
+            duplicates = []
+        else:
+            # Multiple directories - merge with deduplication
+            print(f"Loading metrics from {len(args.comparison_dirs)} comparison directories...")
+            data, duplicates = load_and_merge_metrics(args.comparison_dirs)
+
+            # Count models per directory for info
+            for comp_dir in args.comparison_dirs:
+                dir_data = load_final_metrics(comp_dir)
+                dir_metrics = dir_data.get('metrics', {})
+                models = set()
+                for model_values in dir_metrics.values():
+                    models.update(model_values.keys())
+                print(f"  + {comp_dir}: {len(models)} models")
+
+            # Report duplicates
+            if duplicates:
+                # Group by model label
+                dup_models = {}
+                for model_label, comp_dir in duplicates:
+                    if model_label not in dup_models:
+                        dup_models[model_label] = comp_dir
+                for model_label, comp_dir in dup_models.items():
+                    print(f"  > Overwritten: {model_label} (using value from {Path(comp_dir).name})")
+
+            # Count total unique models
+            all_models = set()
+            for model_values in data.get('metrics', {}).values():
+                all_models.update(model_values.keys())
+            print(f"Merged: {len(all_models)} unique models\n")
 
         # Determine metrics to show (priority: --all-metrics > --metrics > --preset)
         if args.all_metrics:
@@ -475,7 +562,8 @@ Available metrics:
 
         # Handle figure format separately
         if args.format == 'figure':
-            comparison_path = Path(args.comparison_dir)
+            # Use first comparison dir for default output path
+            comparison_path = Path(args.comparison_dirs[0])
 
             # If user specified --output or --metrics, generate single figure
             if args.output or args.metrics or args.all_metrics:
@@ -536,8 +624,11 @@ Available metrics:
 
         # Print metadata
         if args.format == 'console':
-            print(f"\nSource: {args.comparison_dir}/final_metrics.json")
-            print(f"Created: {data.get('created_at', 'unknown')}")
+            if len(args.comparison_dirs) == 1:
+                print(f"\nSource: {args.comparison_dirs[0]}/final_metrics.json")
+                print(f"Created: {data.get('created_at', 'unknown')}")
+            else:
+                print(f"\nSources: {len(args.comparison_dirs)} directories")
             print(f"Models: {len(rows)}, Metrics: {len(headers) - 1}")
 
     except FileNotFoundError as e:
