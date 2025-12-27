@@ -215,6 +215,9 @@ echo "========================================="
 # =========================================================================
 # AUTO-RESUME LOGIC: Check for existing experiment and checkpoint
 # =========================================================================
+# Initialize EXP_NAME with default value (may be overridden if resuming)
+EXP_NAME="${EXP_NAME}"
+
 # Look for existing experiment folder matching this config (ignoring timestamp)
 # Use config variables directly to match any timestamp
 EXP_PATTERN="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_*"
