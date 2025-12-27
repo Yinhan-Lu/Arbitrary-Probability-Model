@@ -66,9 +66,41 @@ NANO_CONFIG = GPT2Config(
 )
 
 
+# GPT-2 configuration (12 layers, same width as distilgpt2)
+# This is the full GPT-2 small model (not distilled)
+GPT2_CONFIG = GPT2Config(
+    vocab_size=50257,
+    n_layer=12,                 # Full 12 layers (vs 6 in distilgpt2)
+    n_head=12,                  # Same as distilgpt2
+    n_embd=768,                 # Same as distilgpt2
+    max_seq_len=1024,           # Same as distilgpt2
+    dropout=0.1,
+    layer_norm_eps=1e-5,
+    ffn_mult=4,
+    activation_function="gelu_new"
+)
+
+
+# GPT-2 Medium configuration (12 layers, wider)
+# Larger model for scaling experiments
+GPT2_MEDIUM_CONFIG = GPT2Config(
+    vocab_size=50257,
+    n_layer=12,                 # 12 layers
+    n_head=16,                  # More heads (vs 12 in gpt2)
+    n_embd=1024,                # Wider embedding (vs 768 in gpt2)
+    max_seq_len=1024,           # Same sequence length
+    dropout=0.1,
+    layer_norm_eps=1e-5,
+    ffn_mult=4,
+    activation_function="gelu_new"
+)
+
+
 # Configuration registry
 CONFIGS = {
     "distilgpt2": DISTILGPT2_CONFIG,
+    "gpt2": GPT2_CONFIG,
+    "gpt2_medium": GPT2_MEDIUM_CONFIG,
     "small": SMALL_CONFIG,
     "tiny": TINY_CONFIG,
     "nano": NANO_CONFIG

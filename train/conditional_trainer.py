@@ -70,6 +70,13 @@ class ConditionalTrainer(BaseTrainer):
             self.config.detach_augmentation = self.args.detach_augmentation
             logger.info(f"Detach augmentation: {self.config.detach_augmentation}")
 
+        # Set position encoding type from args (learned or rope)
+        if hasattr(self.args, 'position_encoding_type'):
+            self.config.position_encoding_type = self.args.position_encoding_type
+            logger.info(f"Position encoding type: {self.config.position_encoding_type}")
+        if hasattr(self.args, 'rope_base'):
+            self.config.rope_base = self.args.rope_base
+
         # Initialize token manager with special tokens
         self.token_manager = TokenManager(
             add_mask_token=True,
@@ -290,85 +297,6 @@ class ConditionalTrainer(BaseTrainer):
         eval_results["loss"] = eval_results["mode3_loss"]
 
         return eval_results
-
-    def get_csv_header(self):
-        """
-        Get CSV header for conditional model logging
-
-        Returns:
-            list: Column names including all 5 evaluation modes
-        """
-        return [
-            "step",
-            "epoch",
-            "train_loss",
-            "train_perplexity",
-            "mode1_loss",
-            "mode1_ppl",
-            "mode2_loss",
-            "mode2_ppl",
-            "mode3_loss",
-            "mode3_ppl",
-            "mode4_loss",
-            "mode4_ppl",
-            "mode5_loss",
-            "mode5_ppl",
-            "learning_rate"
-        ]
-
-    def format_train_metrics(self, avg_loss, perplexity, lr):
-        """
-        Format training metrics for CSV logging
-
-        Args:
-            avg_loss: Average training loss
-            perplexity: Training perplexity
-            lr: Current learning rate
-
-        Returns:
-            dict: Metrics dictionary with empty eval columns (filled during evaluation)
-        """
-        return {
-            'train_loss': avg_loss,
-            'train_perplexity': perplexity,
-            'mode1_loss': '',
-            'mode1_ppl': '',
-            'mode2_loss': '',
-            'mode2_ppl': '',
-            'mode3_loss': '',
-            'mode3_ppl': '',
-            'mode4_loss': '',
-            'mode4_ppl': '',
-            'mode5_loss': '',
-            'mode5_ppl': '',
-            'learning_rate': lr
-        }
-
-    def format_eval_metrics(self, eval_results):
-        """
-        Format evaluation metrics for CSV logging
-
-        Args:
-            eval_results: Results from evaluate() containing all 5 modes
-
-        Returns:
-            dict: Metrics dictionary with all 5 modes and learning rate
-        """
-        return {
-            'train_loss': '',
-            'train_perplexity': '',
-            'mode1_loss': eval_results['mode1_loss'],
-            'mode1_ppl': eval_results['mode1_ppl'],
-            'mode2_loss': eval_results['mode2_loss'],
-            'mode2_ppl': eval_results['mode2_ppl'],
-            'mode3_loss': eval_results['mode3_loss'],
-            'mode3_ppl': eval_results['mode3_ppl'],
-            'mode4_loss': eval_results['mode4_loss'],
-            'mode4_ppl': eval_results['mode4_ppl'],
-            'mode5_loss': eval_results['mode5_loss'],
-            'mode5_ppl': eval_results['mode5_ppl'],
-            'learning_rate': self.optimizer.param_groups[0]["lr"]
-        }
 
     def _load_pretrained_weights(self, pretrained_path):
         """

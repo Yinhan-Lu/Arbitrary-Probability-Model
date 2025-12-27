@@ -108,7 +108,20 @@ def parse_args():
         "--model_config",
         type=str,
         default="distilgpt2",
-        help="Model configuration (e.g., 'distilgpt2', 'small', 'medium')"
+        help="Model configuration (e.g., 'distilgpt2', 'gpt2', 'gpt2_medium', 'small', 'tiny')"
+    )
+    parser.add_argument(
+        "--position_encoding_type",
+        type=str,
+        default="learned",
+        choices=["learned", "rope"],
+        help="Position encoding type: 'learned' (default) or 'rope' (Rotary Position Embedding)"
+    )
+    parser.add_argument(
+        "--rope_base",
+        type=float,
+        default=10000.0,
+        help="Base frequency for RoPE (only used when position_encoding_type='rope')"
     )
 
     # Data arguments
