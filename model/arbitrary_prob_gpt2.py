@@ -24,6 +24,8 @@ class GPT2Config:
         ffn_mult=4,
         activation_function="gelu_new",
         detach_augmentation=False,
+        position_encoding_type="learned",  # "learned" or "rope"
+        rope_base=10000.0,  # RoPE base frequency
         **kwargs
     ):
         self.vocab_size = vocab_size
@@ -37,6 +39,8 @@ class GPT2Config:
         self.mlp_hidden_size = n_embd * ffn_mult
         self.activation_function = activation_function
         self.detach_augmentation = detach_augmentation
+        self.position_encoding_type = position_encoding_type
+        self.rope_base = rope_base
 
 
 class NewGELU(nn.Module):
@@ -76,12 +80,24 @@ class MultiHeadAttention(nn.Module):
             )
         )
 
-    def forward(self, x, attention_mask=None):
+        # RoPE initialization (if enabled)
+        self.position_encoding_type = getattr(config, 'position_encoding_type', 'learned')
+        if self.position_encoding_type == "rope":
+            from model.rope import RotaryEmbedding
+            self.rotary_emb = RotaryEmbedding(
+                dim=self.head_dim,
+                max_seq_len=config.max_seq_len,
+                base=getattr(config, 'rope_base', 10000.0)
+            )
+
+    def forward(self, x, attention_mask=None, position_ids=None):
         """
         Args:
             x: Input tensor of shape (batch_size, seq_len, n_embd)
             attention_mask: Optional attention mask of shape (batch_size, seq_len, seq_len)
                           or (batch_size, 1, seq_len, seq_len)
+            position_ids: Optional position indices of shape (batch_size, seq_len)
+                         Used for RoPE when position_encoding_type="rope"
         Returns:
             Output tensor of shape (batch_size, seq_len, n_embd)
         """
@@ -95,6 +111,10 @@ class MultiHeadAttention(nn.Module):
         q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+
+        # Apply RoPE if enabled
+        if self.position_encoding_type == "rope":
+            q, k = self.rotary_emb(q, k, position_ids)
 
         # Compute attention scores: (B, n_head, T, T)
         attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
@@ -163,9 +183,9 @@ class TransformerBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_eps)
         self.mlp = FeedForward(config)
 
-    def forward(self, x, attention_mask=None):
+    def forward(self, x, attention_mask=None, position_ids=None):
         # Pre-LayerNorm architecture (GPT-2 style)
-        x = x + self.attn(self.ln_1(x), attention_mask=attention_mask)
+        x = x + self.attn(self.ln_1(x), attention_mask=attention_mask, position_ids=position_ids)
         x = x + self.mlp(self.ln_2(x))
         return x
 
@@ -198,9 +218,15 @@ class GPT2Model(nn.Module):
         # Update config to match actual vocab size (important for token_manager compatibility)
         self.config.vocab_size = effective_vocab_size
 
-        # Token + Position embeddings (use effective vocab_size)
+        # Token embeddings (use effective vocab_size)
         self.wte = nn.Embedding(effective_vocab_size, config.n_embd)  # token embeddings
-        self.wpe = nn.Embedding(config.max_seq_len, config.n_embd)  # position embeddings
+
+        # Position embeddings: only for learned position encoding
+        if getattr(config, 'position_encoding_type', 'learned') == "learned":
+            self.wpe = nn.Embedding(config.max_seq_len, config.n_embd)  # position embeddings
+        else:
+            self.wpe = None  # RoPE mode: no learned position embeddings
+
         self.drop = nn.Dropout(config.dropout)
 
         # Transformer blocks
@@ -608,32 +634,50 @@ class GPT2Model(nn.Module):
             pass
         B, T = input_ids.size()
 
-        # Get token and position embeddings
-        if position_ids is None:
-            # Default: sequential positions 0, 1, 2, ..., T-1
-            # In this case, check total sequence length
-            assert T <= self.config.max_seq_len, \
-                f"Sequence length {T} exceeds maximum {self.config.max_seq_len}"
-            pos = torch.arange(0, T, dtype=torch.long, device=input_ids.device).unsqueeze(0)  # (1, T)
-        else:
-            # Custom positions for prefix conditioning
-            # In this case, check that position IDs are within range
-            # (total sequence length can exceed max_seq_len)
-            max_pos = position_ids.max().item()
-            assert max_pos < self.config.max_seq_len, \
-                f"Position ID {max_pos} exceeds maximum {self.config.max_seq_len - 1}"
-            pos = position_ids
-            if pos.dim() == 1:
-                pos = pos.unsqueeze(0)  # (T,) -> (1, T)
-
+        # Get token embeddings
         tok_emb = self.wte(input_ids)  # (B, T, n_embd)
-        pos_emb = self.wpe(pos)  # (1, T, n_embd) or (B, T, n_embd)
 
-        x = self.drop(tok_emb + pos_emb)
+        if self.wpe is not None:
+            # === LEARNED POSITION ENCODING ===
+            if position_ids is None:
+                # Default: sequential positions 0, 1, 2, ..., T-1
+                assert T <= self.config.max_seq_len, \
+                    f"Sequence length {T} exceeds maximum {self.config.max_seq_len}"
+                pos = torch.arange(0, T, dtype=torch.long, device=input_ids.device).unsqueeze(0)
+            else:
+                # Custom positions for prefix conditioning
+                max_pos = position_ids.max().item()
+                assert max_pos < self.config.max_seq_len, \
+                    f"Position ID {max_pos} exceeds maximum {self.config.max_seq_len - 1}"
+                pos = position_ids
+                if pos.dim() == 1:
+                    pos = pos.unsqueeze(0)
+
+            pos_emb = self.wpe(pos)  # (1, T, n_embd) or (B, T, n_embd)
+            x = self.drop(tok_emb + pos_emb)
+            rope_position_ids = None  # Not needed for learned mode
+
+        else:
+            # === ROPE POSITION ENCODING ===
+            x = self.drop(tok_emb)  # No position embedding addition
+
+            # Prepare position_ids for attention layers
+            if position_ids is None:
+                rope_position_ids = torch.arange(T, dtype=torch.long, device=input_ids.device)
+                rope_position_ids = rope_position_ids.unsqueeze(0).expand(B, -1)
+            else:
+                rope_position_ids = position_ids
+                if rope_position_ids.dim() == 1:
+                    rope_position_ids = rope_position_ids.unsqueeze(0).expand(B, -1)
+
+                # Check position range
+                max_pos = rope_position_ids.max().item()
+                assert max_pos < self.config.max_seq_len, \
+                    f"Position ID {max_pos} exceeds maximum {self.config.max_seq_len - 1}"
 
         # Apply transformer blocks
         for block in self.blocks:
-            x = block(x, attention_mask=attention_mask)
+            x = block(x, attention_mask=attention_mask, position_ids=rope_position_ids)
 
         # Final layer norm
         x = self.ln_f(x)
