@@ -80,8 +80,8 @@ declare -a COND_CONFIGS=(
 # Common training parameters
 BATCH_SIZE=8
 GRAD_ACCUM=16
-NUM_SAMPLES=1000000
-EVAL_SAMPLES=10000
+NUM_SAMPLES=-1          # Use full dataset (WikiText-103: ~100K sequences)
+EVAL_SAMPLES=-1         # Use full eval set
 LEARNING_RATE="5e-4"
 NUM_EPOCHS=20
 WEIGHT_DECAY=0.1

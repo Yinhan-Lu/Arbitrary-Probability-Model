@@ -167,10 +167,13 @@ class WikipediaDataset(Dataset):
             )
 
         # Limit dataset size if requested
-        if num_samples:
+        # num_samples = -1 or None means "use all data"
+        if num_samples and num_samples > 0:
             total_docs = len(self.dataset)
             self.dataset = self.dataset.select(range(min(num_samples, total_docs)))
             logger.info(f"Using {len(self.dataset)} documents out of {total_docs}")
+        else:
+            logger.info(f"Using all {len(self.dataset)} documents (num_samples={num_samples})")
 
         logger.info(f"Dataset loaded successfully. Documents: {len(self.dataset)}")
 
