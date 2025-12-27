@@ -162,8 +162,8 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
         cat > "$SCRIPT_FILE" << EOF
 #!/bin/bash
 #SBATCH --job-name=${JOB_NAME}
-#SBATCH --output=logs/slurm_%j.out
-#SBATCH --error=logs/slurm_%j.err
+#SBATCH --output=logs/cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_%j.out
+#SBATCH --error=logs/cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_%j.err
 #SBATCH --time=2-00:00:00
 #SBATCH --gres=gpu:${GPU_TYPE}
 #SBATCH --cpus-per-task=8
