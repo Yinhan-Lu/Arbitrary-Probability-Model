@@ -127,11 +127,17 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
         # 1023 = body tokens (1024 positions - 1 BOS)
         MAX_COND_BLOCKS=$(python3 -c "import math; print(math.ceil(1023 * $COND_MAX))")
 
-        # Construct experiment name
-        EXP_NAME="rope_ablation_${MODEL_CONFIG}_${LABEL}"
+        # Generate timestamp
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+        # Convert COND_MAX to percentage (0.2 -> 20, 1.0 -> 100)
+        COND_PCT=$(python3 -c "print(int($COND_MAX * 100))")
+
+        # Construct experiment name: cond0-{pct}_max_block_rope_{scale}_conditional_{timestamp}
+        EXP_NAME="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_${TIMESTAMP}"
 
         # Construct job name (max 15 chars for SLURM)
-        JOB_NAME="rope_${MODEL_CONFIG:0:4}_${LABEL:4:4}"
+        JOB_NAME="c${COND_PCT}_${MODEL_CONFIG:0:6}"
 
         echo "----------------------------------------"
         echo "Experiment: $EXP_NAME"
