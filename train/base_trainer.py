@@ -44,15 +44,18 @@ class BaseTrainer(ABC):
     - Scheduler configuration
     - Logging infrastructure
     - Checkpointing format
+    - FP16/AMP support (optional, enabled via args.fp16)
 
     Subclasses must implement:
     - setup_model(): Model initialization (model-specific)
     - setup_data(): Data loader creation (model-specific)
     - train_step(batch): Single training step (model-specific)
     - evaluate(): Evaluation procedure (model-specific)
-    - get_csv_header(): CSV log column headers (model-specific)
-    - format_train_metrics(avg_loss, perplexity, lr): Format training metrics for CSV
-    - format_eval_metrics(eval_results): Format evaluation metrics for CSV
+
+    Subclasses can optionally override:
+    - _get_extra_csv_columns(): Add model-specific CSV columns
+    - _get_extra_train_metrics(): Add model-specific training metrics
+    - _get_extra_eval_metrics(): Add model-specific evaluation metrics
     """
 
     def __init__(self, args):
@@ -82,6 +85,9 @@ class BaseTrainer(ABC):
         # Setup optimizer and scheduler (identical for all baselines)
         logger.info("Setting up optimizer and scheduler...")
         self._setup_optimizer()
+
+        # Setup automatic mixed precision (optional, enabled via args.fp16)
+        self._setup_amp()
 
         # Training state
         self.global_step = 0
@@ -141,20 +147,42 @@ class BaseTrainer(ABC):
         """
         pass
 
-    @abstractmethod
+    # =========================================================================
+    # CSV Logging Methods (with default 5-mode format)
+    # =========================================================================
+
     def get_csv_header(self):
         """
-        Get CSV header for logging (model-specific)
+        Get CSV header for logging
+
+        Default implementation provides 5-mode evaluation format.
+        Override _get_extra_csv_columns() to add model-specific columns.
 
         Returns:
             list: Column names for CSV file
         """
-        pass
+        base_columns = [
+            "step", "epoch", "train_loss", "train_perplexity",
+            "mode1_loss", "mode1_ppl", "mode2_loss", "mode2_ppl",
+            "mode3_loss", "mode3_ppl", "mode4_loss", "mode4_ppl",
+            "mode5_loss", "mode5_ppl", "learning_rate"
+        ]
+        return base_columns + self._get_extra_csv_columns()
 
-    @abstractmethod
+    def _get_extra_csv_columns(self):
+        """
+        Override to add model-specific CSV columns
+
+        Example: return ["sigmagpt_mode", "ordering_mode"]
+        """
+        return []
+
     def format_train_metrics(self, avg_loss, perplexity, lr):
         """
-        Format training metrics for CSV logging (model-specific)
+        Format training metrics for CSV logging
+
+        Default implementation provides 5-mode format with empty eval columns.
+        Override _get_extra_train_metrics() to add model-specific metrics.
 
         Args:
             avg_loss: Average training loss
@@ -164,12 +192,33 @@ class BaseTrainer(ABC):
         Returns:
             dict: Metrics dictionary with keys matching CSV header
         """
-        pass
+        metrics = {
+            'train_loss': avg_loss,
+            'train_perplexity': perplexity,
+            'mode1_loss': '', 'mode1_ppl': '',
+            'mode2_loss': '', 'mode2_ppl': '',
+            'mode3_loss': '', 'mode3_ppl': '',
+            'mode4_loss': '', 'mode4_ppl': '',
+            'mode5_loss': '', 'mode5_ppl': '',
+            'learning_rate': lr
+        }
+        metrics.update(self._get_extra_train_metrics())
+        return metrics
 
-    @abstractmethod
+    def _get_extra_train_metrics(self):
+        """
+        Override to add model-specific training metrics
+
+        Example: return {"sigmagpt_mode": self.sigmagpt_mode}
+        """
+        return {}
+
     def format_eval_metrics(self, eval_results):
         """
-        Format evaluation metrics for CSV logging (model-specific)
+        Format evaluation metrics for CSV logging
+
+        Default implementation provides 5-mode format.
+        Override _get_extra_eval_metrics() to add model-specific metrics.
 
         Args:
             eval_results: Results from evaluate() method
@@ -177,27 +226,73 @@ class BaseTrainer(ABC):
         Returns:
             dict: Metrics dictionary with keys matching CSV header
         """
-        pass
+        metrics = {
+            'train_loss': '', 'train_perplexity': '',
+            'mode1_loss': eval_results.get('mode1_loss', ''),
+            'mode1_ppl': eval_results.get('mode1_ppl', ''),
+            'mode2_loss': eval_results.get('mode2_loss', ''),
+            'mode2_ppl': eval_results.get('mode2_ppl', ''),
+            'mode3_loss': eval_results.get('mode3_loss', ''),
+            'mode3_ppl': eval_results.get('mode3_ppl', ''),
+            'mode4_loss': eval_results.get('mode4_loss', ''),
+            'mode4_ppl': eval_results.get('mode4_ppl', ''),
+            'mode5_loss': eval_results.get('mode5_loss', ''),
+            'mode5_ppl': eval_results.get('mode5_ppl', ''),
+            'learning_rate': self.optimizer.param_groups[0]["lr"]
+        }
+        metrics.update(self._get_extra_eval_metrics(eval_results))
+        return metrics
+
+    def _get_extra_eval_metrics(self, eval_results):
+        """
+        Override to add model-specific evaluation metrics
+
+        Example: return {"sigmagpt_mode": self.sigmagpt_mode}
+        """
+        return {}
 
     # =========================================================================
-    # Training loop hooks (override for FP16/custom behavior)
+    # FP16/AMP Support
+    # =========================================================================
+
+    def _setup_amp(self):
+        """
+        Setup automatic mixed precision training (optional)
+
+        Enabled via args.fp16 flag. Only works on CUDA devices.
+        """
+        self.use_amp = getattr(self.args, 'fp16', False) and self.device.type == 'cuda'
+        if self.use_amp:
+            from torch.cuda.amp import GradScaler
+            self.scaler = GradScaler()
+            logger.info("Using mixed precision training (FP16)")
+        else:
+            self.scaler = None
+
+    # =========================================================================
+    # Training loop hooks (with FP16 support)
     # =========================================================================
 
     def _backward(self, scaled_loss):
         """
-        Backward pass - override for FP16 support
+        Backward pass with optional FP16 gradient scaling
 
         Args:
             scaled_loss: Loss tensor (already scaled by gradient accumulation)
         """
-        scaled_loss.backward()
+        if self.use_amp:
+            self.scaler.scale(scaled_loss).backward()
+        else:
+            scaled_loss.backward()
 
     def _clip_gradients(self):
         """
-        Gradient clipping - override for FP16 unscaling
+        Gradient clipping with FP16 unscaling if needed
 
         Called after backward, before optimizer step.
         """
+        if self.use_amp:
+            self.scaler.unscale_(self.optimizer)
         torch.nn.utils.clip_grad_norm_(
             self.model.parameters(),
             self.args.max_grad_norm
@@ -205,11 +300,15 @@ class BaseTrainer(ABC):
 
     def _optimizer_step(self):
         """
-        Optimizer step - override for FP16 scaler
+        Optimizer step with FP16 scaler support
 
         Called after gradient clipping.
         """
-        self.optimizer.step()
+        if self.use_amp:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
 
     def _setup_device(self, device_arg):
         """
@@ -236,6 +335,28 @@ class BaseTrainer(ABC):
             device = torch.device(device_arg)
 
         return device
+
+    def _setup_tokenizer(self, pretrained_name='gpt2', tokenizer_class=None):
+        """
+        Helper to setup tokenizer with common configuration
+
+        Args:
+            pretrained_name: HuggingFace model name (default: 'gpt2')
+            tokenizer_class: Optional tokenizer class (default: GPT2Tokenizer)
+
+        Returns:
+            Configured tokenizer with pad_token set
+        """
+        if tokenizer_class is None:
+            from transformers import GPT2Tokenizer
+            tokenizer_class = GPT2Tokenizer
+
+        tokenizer = tokenizer_class.from_pretrained(pretrained_name)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        logger.info(f"Tokenizer: {pretrained_name}, vocab_size: {len(tokenizer)}")
+        return tokenizer
 
     def _setup_experiment_dir(self, args):
         """
@@ -308,8 +429,18 @@ class BaseTrainer(ABC):
             milestones=[self.args.warmup_steps]
         )
 
-    def _init_csv_logger(self):
-        """Initialize CSV logger with header"""
+    def _init_csv_logger(self, append=False):
+        """
+        Initialize CSV logger with header
+
+        Args:
+            append: If True and CSV exists, don't overwrite (for resume mode)
+        """
+        if append and self.csv_log_file.exists():
+            # Append mode: CSV already exists with header, don't overwrite
+            logger.info(f"CSV logger in append mode: {self.csv_log_file}")
+            return
+
         with open(self.csv_log_file, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=self.get_csv_header())
             writer.writeheader()
@@ -324,6 +455,43 @@ class BaseTrainer(ABC):
         with open(self.csv_log_file, 'a', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=self.get_csv_header())
             writer.writerow(metrics)
+
+    def _truncate_csv_to_step(self, target_step):
+        """
+        Truncate CSV to only include rows with step <= target_step
+
+        Used when resuming from checkpoint to remove "dirty" rows
+        written after the checkpoint was saved (e.g., after preemption).
+
+        Args:
+            target_step: Maximum step to keep in CSV
+        """
+        if not self.csv_log_file.exists():
+            logger.info("No CSV file to truncate")
+            return
+
+        # Read existing CSV
+        rows_to_keep = []
+        removed_count = 0
+
+        with open(self.csv_log_file, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+
+            for row in reader:
+                step = int(row.get('step', 0))
+                if step <= target_step:
+                    rows_to_keep.append(row)
+                else:
+                    removed_count += 1
+
+        # Rewrite CSV with only valid rows
+        with open(self.csv_log_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows_to_keep)
+
+        logger.info(f"CSV truncated: kept {len(rows_to_keep)} rows (step <= {target_step}), removed {removed_count} rows")
 
     def train(self):
         """
@@ -348,7 +516,12 @@ class BaseTrainer(ABC):
         running_batch_count = 0  # Track actual batch count for accurate averaging
         self.optimizer.zero_grad()
 
-        for epoch in range(self.args.num_epochs):
+        # Start from resumed epoch (0 if starting fresh)
+        start_epoch = self.epoch
+        if start_epoch > 0:
+            logger.info(f"Resuming from epoch {start_epoch + 1}")
+
+        for epoch in range(start_epoch, self.args.num_epochs):
             self.epoch = epoch
             logger.info(f"\nEpoch {epoch + 1}/{self.args.num_epochs}")
 
@@ -511,12 +684,14 @@ class BaseTrainer(ABC):
         torch.save(checkpoint, checkpoint_path)
         logger.info(f"Checkpoint saved: {checkpoint_path}")
 
-    def load_checkpoint(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path, resume_csv=True):
         """
-        Load checkpoint
+        Load checkpoint and optionally handle CSV for resume
 
         Args:
             checkpoint_path: Path to checkpoint file
+            resume_csv: If True, truncate CSV to checkpoint's global_step
+                       (removes rows written after checkpoint was saved)
         """
         logger.info(f"Loading checkpoint from {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
@@ -527,5 +702,9 @@ class BaseTrainer(ABC):
         self.global_step = checkpoint["global_step"]
         self.epoch = checkpoint["epoch"]
         self.best_val_loss = checkpoint["best_val_loss"]
+
+        # Truncate CSV to remove rows written after this checkpoint (preemption recovery)
+        if resume_csv:
+            self._truncate_csv_to_step(self.global_step)
 
         logger.info(f"Checkpoint loaded: step={self.global_step}, epoch={self.epoch}, best_val_loss={self.best_val_loss:.4f}")

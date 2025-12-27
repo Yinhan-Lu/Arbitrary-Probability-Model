@@ -3,6 +3,8 @@ DistilBERT Baseline Trainer (Masked Language Modeling)
 
 Trains a DistilBERT-style encoder-only Transformer from scratch
 using the same pipeline infrastructure as the autoregressive baseline.
+
+FP16 support via BaseTrainer (enabled with --fp16).
 """
 
 import sys
@@ -10,17 +12,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from train.bert_evaluation_modes import evaluate_bert_all_modes
 
-
 import torch
 import logging
 from torch.amp import autocast
-from torch.cuda.amp import GradScaler
-from transformers import GPT2TokenizerFast  
+from transformers import GPT2TokenizerFast
 
 from train.base_trainer import BaseTrainer
 from model.distilbert import DistilBertConfig, DistilBertForMaskedLM
 from train.mlm_collator import MLMDataCollator
-from train.dataset import get_dataloader 
+from train.dataset import get_dataloader
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,8 @@ class DistilBertTrainer(BaseTrainer):
 
     def setup_model(self):
         logger.info("Setting up DistilBERT model...")
-        #Load GPT-2 tokenizer
+
+        # Load GPT-2 tokenizer (need GPT2TokenizerFast for BERT-style training)
         self.tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
         # Add PAD token if missing
@@ -40,8 +41,7 @@ class DistilBertTrainer(BaseTrainer):
         if self.tokenizer.mask_token is None:
             self.tokenizer.add_special_tokens({"mask_token": "[MASK]"})
 
-        # Build config 
-
+        # Build config
         vocab_size = len(self.tokenizer)
         logger.info(f"Tokenizer vocab size: {vocab_size}")
         self.config = DistilBertConfig(
@@ -49,15 +49,6 @@ class DistilBertTrainer(BaseTrainer):
             max_position_embeddings=1024,
         )
         self.model = DistilBertForMaskedLM(self.config).to(self.device)
-
-
-        #to make it run faster
-        self.use_amp = getattr(self.args, "fp16", False) and self.device.type == "cuda"
-        if self.use_amp:
-            self.scaler = GradScaler()
-            logger.info("Using mixed precision (FP16)")
-        else:
-            logger.info("Using FP32")
 
         logger.info(
             f"Model params (rough): "
@@ -205,93 +196,4 @@ class DistilBertTrainer(BaseTrainer):
         logger.info(f"Mode 5 (Train dist parallel): loss={metrics['mode5_loss']:.4f}, ppl={metrics['mode5_ppl']:.2f}")
 
         return metrics
-
-
-    def get_csv_header(self):
-        """
-        Get CSV header for logging
-        
-        Format matches conditional/sigmagpt models for fair comparison:
-        - step, epoch
-        - train_loss, train_perplexity
-        - mode1_loss, mode1_ppl, ..., mode5_loss, mode5_ppl
-        - learning_rate
-        """
-        return [
-            "step",
-            "epoch",
-            "train_loss",
-            "train_perplexity",
-            "mode1_loss",
-            "mode1_ppl",
-            "mode2_loss",
-            "mode2_ppl",
-            "mode3_loss",
-            "mode3_ppl",
-            "mode4_loss",
-            "mode4_ppl",
-            "mode5_loss",
-            "mode5_ppl",
-            "learning_rate"
-        ]
-
-    def format_train_metrics(self, avg_loss, perplexity, lr):
-        """
-        Format training metrics for CSV logging
-        
-        During training step, eval metrics are empty.
-        Matches conditional model's 5-mode format for fair comparison.
-        
-        Args:
-            avg_loss: Average training loss
-            perplexity: Training perplexity
-            lr: Current learning rate
-            
-        Returns:
-            dict: Metrics dictionary with empty eval columns (filled during evaluation)
-        """
-        return {
-            'train_loss': avg_loss,
-            'train_perplexity': perplexity,
-            'mode1_loss': '',
-            'mode1_ppl': '',
-            'mode2_loss': '',
-            'mode2_ppl': '',
-            'mode3_loss': '',
-            'mode3_ppl': '',
-            'mode4_loss': '',
-            'mode4_ppl': '',
-            'mode5_loss': '',
-            'mode5_ppl': '',
-            'learning_rate': lr
-        }
-
-    def format_eval_metrics(self, eval_results):
-        """
-        Format evaluation metrics for CSV logging
-        
-        During evaluation step, train metrics are empty.
-        Matches conditional model's 5-mode format for fair comparison.
-        
-        Args:
-            eval_results: Results from evaluate() containing all 5 modes
-            
-        Returns:
-            dict: Metrics dictionary with all 5 modes and learning rate
-        """
-        return {
-            'train_loss': '',
-            'train_perplexity': '',
-            'mode1_loss': eval_results['mode1_loss'],
-            'mode1_ppl': eval_results['mode1_ppl'],
-            'mode2_loss': eval_results['mode2_loss'],
-            'mode2_ppl': eval_results['mode2_ppl'],
-            'mode3_loss': eval_results['mode3_loss'],
-            'mode3_ppl': eval_results['mode3_ppl'],
-            'mode4_loss': eval_results['mode4_loss'],
-            'mode4_ppl': eval_results['mode4_ppl'],
-            'mode5_loss': eval_results['mode5_loss'],
-            'mode5_ppl': eval_results['mode5_ppl'],
-            'learning_rate': self.optimizer.param_groups[0]["lr"]
-        }
 

@@ -6,7 +6,7 @@ for comparison with conditional probability models.
 
 Key features:
 - Standard left-to-right autoregressive training
-- Optional mixed precision training (FP16)
+- FP16 support via BaseTrainer (enabled with --fp16)
 - Standard evaluation (single loss and perplexity)
 - No special tokens or augmentation
 """
@@ -18,8 +18,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import torch
 import logging
 from torch.amp import autocast
-from torch.cuda.amp import GradScaler
-from transformers import GPT2Tokenizer
 
 from train.base_trainer import BaseTrainer
 from model.config import get_config
@@ -36,7 +34,7 @@ class BaselineTrainer(BaseTrainer):
     Extends BaseTrainer with:
     - Standard model initialization (no special tokens)
     - Standard data loading (no augmentation)
-    - Standard forward pass with optional FP16
+    - Standard forward pass (FP16 handled by BaseTrainer)
     - Standard evaluation (single loss and perplexity)
     """
 
@@ -45,9 +43,8 @@ class BaselineTrainer(BaseTrainer):
         Setup standard model (no special tokens)
 
         Baseline model uses:
-        - Standard GPT-2 tokenizer
+        - Standard GPT-2 tokenizer (via BaseTrainer helper)
         - Standard model initialization (no special tokens)
-        - Optional mixed precision training (FP16)
         """
         logger.info("Setting up baseline model...")
 
@@ -57,21 +54,9 @@ class BaselineTrainer(BaseTrainer):
         # Create standard model (no special tokens)
         self.model = GPT2Model(self.config).to(self.device)
 
-        # Standard tokenizer
-        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        logger.info(f"Tokenizer vocabulary size: {len(self.tokenizer)}")
+        # Standard tokenizer (using BaseTrainer helper)
+        self.tokenizer = self._setup_tokenizer()
         logger.info(f"Pad token ID: {self.tokenizer.pad_token_id}")
-
-        # Setup mixed precision training
-        self.use_amp = hasattr(self.args, 'fp16') and self.args.fp16 and self.device.type == 'cuda'
-        if self.use_amp:
-            self.scaler = GradScaler()
-            logger.info("Using mixed precision training (FP16)")
-        else:
-            logger.info("Using full precision training (FP32)")
 
         total_params = self.model.get_num_params()
         logger.info(f"Model parameters: {total_params/1e6:.2f}M")
@@ -170,123 +155,3 @@ class BaselineTrainer(BaseTrainer):
 
         self.model.train()
         return eval_results
-
-    def get_csv_header(self):
-        """
-        Get CSV header for baseline model logging
-
-        Uses 5-mode format for compatibility with other trainers.
-        Only mode1 will have values, modes 2-5 will be empty.
-
-        Returns:
-            list: Column names matching 5-mode format
-        """
-        return [
-            "step",
-            "epoch",
-            "train_loss",
-            "train_perplexity",
-            "mode1_loss",
-            "mode1_ppl",
-            "mode2_loss",
-            "mode2_ppl",
-            "mode3_loss",
-            "mode3_ppl",
-            "mode4_loss",
-            "mode4_ppl",
-            "mode5_loss",
-            "mode5_ppl",
-            "learning_rate"
-        ]
-
-    def format_train_metrics(self, avg_loss, perplexity, lr):
-        """
-        Format training metrics for CSV logging
-
-        Args:
-            avg_loss: Average training loss
-            perplexity: Training perplexity
-            lr: Current learning rate
-
-        Returns:
-            dict: Metrics dictionary with empty evaluation columns
-        """
-        return {
-            'train_loss': avg_loss,
-            'train_perplexity': perplexity,
-            'mode1_loss': '',
-            'mode1_ppl': '',
-            'mode2_loss': '',
-            'mode2_ppl': '',
-            'mode3_loss': '',
-            'mode3_ppl': '',
-            'mode4_loss': '',
-            'mode4_ppl': '',
-            'mode5_loss': '',
-            'mode5_ppl': '',
-            'learning_rate': lr
-        }
-
-    def format_eval_metrics(self, eval_results):
-        """
-        Format evaluation metrics for CSV logging
-
-        Args:
-            eval_results: Results from evaluate() containing mode1 metrics
-
-        Returns:
-            dict: Metrics dictionary with mode1 results, other modes empty
-        """
-        return {
-            'train_loss': '',
-            'train_perplexity': '',
-            'mode1_loss': eval_results['mode1_loss'],
-            'mode1_ppl': eval_results['mode1_ppl'],
-            'mode2_loss': '',
-            'mode2_ppl': '',
-            'mode3_loss': '',
-            'mode3_ppl': '',
-            'mode4_loss': '',
-            'mode4_ppl': '',
-            'mode5_loss': '',
-            'mode5_ppl': '',
-            'learning_rate': self.optimizer.param_groups[0]["lr"]
-        }
-
-    # =========================================================================
-    # FP16 Training Loop Hooks
-    # =========================================================================
-
-    def _backward(self, scaled_loss):
-        """
-        Backward pass with FP16 gradient scaling support
-
-        Args:
-            scaled_loss: Loss tensor (already scaled by gradient accumulation)
-        """
-        if self.use_amp:
-            self.scaler.scale(scaled_loss).backward()
-        else:
-            scaled_loss.backward()
-
-    def _clip_gradients(self):
-        """
-        Gradient clipping with FP16 unscaling
-
-        Must unscale gradients before clipping when using FP16.
-        """
-        if self.use_amp:
-            self.scaler.unscale_(self.optimizer)
-        super()._clip_gradients()
-
-    def _optimizer_step(self):
-        """
-        Optimizer step with FP16 scaler support
-
-        Uses scaler.step() and scaler.update() when using FP16.
-        """
-        if self.use_amp:
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-        else:
-            super()._optimizer_step()

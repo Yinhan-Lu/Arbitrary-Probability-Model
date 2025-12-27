@@ -430,83 +430,24 @@ class SigmaGPTTrainer(BaseTrainer):
             "perplexity": perplexity
         }
 
-    def get_csv_header(self):
-        """
-        Get CSV header for logging
+    # =========================================================================
+    # CSV Extension Hooks (SigmaGPT-specific columns)
+    # =========================================================================
 
-        Format matches conditional model for fair comparison:
-        - step, epoch
-        - train_loss, train_perplexity
-        - mode1_loss, mode1_ppl, ..., mode5_loss, mode5_ppl
-        - learning_rate
-        - sigmagpt_mode, ordering_mode (SigmaGPT-specific)
-        """
-        return [
-            "step",
-            "epoch",
-            "train_loss",
-            "train_perplexity",
-            "mode1_loss",
-            "mode1_ppl",
-            "mode2_loss",
-            "mode2_ppl",
-            "mode3_loss",
-            "mode3_ppl",
-            "mode4_loss",
-            "mode4_ppl",
-            "mode5_loss",
-            "mode5_ppl",
-            "learning_rate",
-            "sigmagpt_mode",
-            "ordering_mode"
-        ]
+    def _get_extra_csv_columns(self):
+        """Add SigmaGPT-specific columns to CSV"""
+        return ["sigmagpt_mode", "ordering_mode"]
 
-    def format_train_metrics(self, avg_loss, perplexity, lr):
-        """
-        Format training metrics for CSV logging
-
-        During training step, eval metrics are empty.
-        Matches conditional model's 5-mode format for fair comparison.
-        """
+    def _get_extra_train_metrics(self):
+        """Add SigmaGPT-specific training metrics"""
         return {
-            'train_loss': avg_loss,
-            'train_perplexity': perplexity,
-            'mode1_loss': '',
-            'mode1_ppl': '',
-            'mode2_loss': '',
-            'mode2_ppl': '',
-            'mode3_loss': '',
-            'mode3_ppl': '',
-            'mode4_loss': '',
-            'mode4_ppl': '',
-            'mode5_loss': '',
-            'mode5_ppl': '',
-            'learning_rate': lr,
             'sigmagpt_mode': self.sigmagpt_mode,
             'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal')
         }
 
-    def format_eval_metrics(self, eval_results):
-        """
-        Format evaluation metrics for CSV logging
-
-        During evaluation step, train metrics are empty.
-        Matches conditional model's 5-mode format for fair comparison.
-        """
+    def _get_extra_eval_metrics(self, eval_results):
+        """Add SigmaGPT-specific evaluation metrics"""
         return {
-            'train_loss': '',
-            'train_perplexity': '',
-            'mode1_loss': eval_results['mode1_loss'],
-            'mode1_ppl': eval_results['mode1_ppl'],
-            'mode2_loss': eval_results['mode2_loss'],
-            'mode2_ppl': eval_results['mode2_ppl'],
-            'mode3_loss': eval_results['mode3_loss'],
-            'mode3_ppl': eval_results['mode3_ppl'],
-            'mode4_loss': eval_results['mode4_loss'],
-            'mode4_ppl': eval_results['mode4_ppl'],
-            'mode5_loss': eval_results['mode5_loss'],
-            'mode5_ppl': eval_results['mode5_ppl'],
-            'learning_rate': self.optimizer.param_groups[0]["lr"],
             'sigmagpt_mode': self.sigmagpt_mode,
             'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal')
         }

@@ -265,6 +265,14 @@ def parse_args():
         help="Run evaluation during training"
     )
 
+    # Resume from checkpoint
+    parser.add_argument(
+        "--resume_from",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume from (handles CSV truncation automatically)"
+    )
+
     # Reproducibility arguments
     parser.add_argument(
         "--seed",
@@ -620,6 +628,13 @@ def main():
 
     # Create appropriate trainer
     trainer = create_trainer(args)
+
+    # Resume from checkpoint if specified
+    if args.resume_from:
+        logger.info(f"Resuming from checkpoint: {args.resume_from}")
+        trainer.load_checkpoint(args.resume_from, resume_csv=True)
+        # Re-init CSV logger in append mode (don't overwrite)
+        trainer._init_csv_logger(append=True)
 
     # Start training
     try:

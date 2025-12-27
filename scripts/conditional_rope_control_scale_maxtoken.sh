@@ -212,6 +212,30 @@ echo "Python: \$(which python3)"
 echo "PyTorch: \$(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
+# =========================================================================
+# AUTO-RESUME LOGIC: Check for existing experiment and checkpoint
+# =========================================================================
+# Look for existing experiment folder matching this config (without timestamp)
+EXP_PATTERN="${EXP_NAME%_*}_*"  # Remove timestamp, add wildcard
+EXISTING_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
+RESUME_ARG=""
+
+if [ -n "\$EXISTING_EXP" ] && [ -d "\$EXISTING_EXP/checkpoints" ]; then
+    # Find latest checkpoint (by step number, not modification time)
+    LATEST_CKPT=\$(ls -v "\$EXISTING_EXP/checkpoints/checkpoint_step_"*.pt 2>/dev/null | tail -1)
+
+    if [ -n "\$LATEST_CKPT" ]; then
+        echo "========================================="
+        echo "RESUMING FROM CHECKPOINT"
+        echo "  Experiment: \$EXISTING_EXP"
+        echo "  Checkpoint: \$LATEST_CKPT"
+        echo "========================================="
+        RESUME_ARG="--resume_from \$LATEST_CKPT"
+        # Use existing experiment name (preserves original timestamp)
+        EXP_NAME=\$(basename "\$EXISTING_EXP")
+    fi
+fi
+
 # Run training
 python3 ./train.py \\
     --model_type conditional \\
@@ -249,9 +273,10 @@ python3 ./train.py \\
     --do_eval \\
     --max_eval_batches 10 \\
     --output_dir ./experiments \\
-    --exp_name ${EXP_NAME} \\
+    --exp_name \${EXP_NAME} \\
     --device cuda \\
-    --num_workers 4
+    --num_workers 4 \\
+    \$RESUME_ARG
 
 EXIT_CODE=\$?
 
