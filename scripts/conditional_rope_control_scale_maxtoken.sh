@@ -68,13 +68,13 @@ declare -a MODEL_CONFIGS=("distilgpt2" "gpt2" "gpt2_medium")
 
 # Conditioning percentages: 0-20%, 0-40%, 0-60%, 0-80%, 0-100%
 # Format: "cond_max mode2_min mode2_max label"
-# mode2 boundary is set to ~75% of cond_max for reasonable evaluation
+# mode2 boundary is FIXED at 10-30% for all experiments (standardized evaluation)
 declare -a COND_CONFIGS=(
-    "0.2 0.05 0.15 cond0_20"
+    "0.2 0.10 0.30 cond0_20"
     "0.4 0.10 0.30 cond0_40"
-    "0.6 0.15 0.45 cond0_60"
-    "0.8 0.20 0.60 cond0_80"
-    "1.0 0.25 0.75 cond0_100"
+    "0.6 0.10 0.30 cond0_60"
+    "0.8 0.10 0.30 cond0_80"
+    "1.0 0.10 0.30 cond0_100"
 )
 
 # Common training parameters
