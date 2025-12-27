@@ -386,8 +386,8 @@ def parse_args():
         parser.add_argument(
             "--max_cond_blocks",
             type=int,
-            default=5,
-            help="Maximum number of conditioning blocks for blockwise sampling"
+            default=None,
+            help="Maximum number of conditioning blocks (default: None = no limit, use num_cond_tokens)"
         )
 
         # Mode 2 (Boundary filling) evaluation parameters
@@ -503,8 +503,8 @@ def parse_args():
         parser.add_argument(
             "--max_cond_blocks",
             type=int,
-            default=5,
-            help="Maximum number of conditioning blocks (default: 5)"
+            default=None,
+            help="Maximum number of conditioning blocks (default: None = no limit, use num_cond_tokens)"
         )
         # Distribution parameters (must match training config for fair comparison)
         parser.add_argument(

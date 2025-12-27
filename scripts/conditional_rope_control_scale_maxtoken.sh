@@ -9,7 +9,7 @@
 # Key settings:
 #   - position_encoding_type = "rope"
 #   - min_conditioning = 0 (always)
-#   - max_cond_blocks = max_n_cond (blocks = cond tokens)
+#   - max_cond_blocks = None (no limit, uses num_cond_tokens automatically)
 #   - eval_pct = 1.0 (all non-cond = eval)
 #
 # Total: 3 sizes × 5 cond_pct = 15 experiments
@@ -123,10 +123,6 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
             continue
         fi
 
-        # Calculate max_cond_blocks = ceil(1023 * cond_max)
-        # 1023 = body tokens (1024 positions - 1 BOS)
-        MAX_COND_BLOCKS=$(python3 -c "import math; print(math.ceil(1023 * $COND_MAX))")
-
         # Generate timestamp
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -143,7 +139,6 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
         echo "Experiment: $EXP_NAME"
         echo "  Model: $MODEL_CONFIG"
         echo "  Cond: 0.0-${COND_MAX}"
-        echo "  Max blocks: $MAX_COND_BLOCKS"
         echo "  Mode2: ${MODE2_MIN}-${MODE2_MAX}"
 
         # Create temporary job script
@@ -173,7 +168,7 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
 # ==========================================================================
 # ROPE ABLATION EXPERIMENT
 # Model: ${MODEL_CONFIG}
-# Conditioning: 0.0-${COND_MAX} (max_blocks=${MAX_COND_BLOCKS})
+# Conditioning: 0.0-${COND_MAX}
 # Position Encoding: RoPE
 # ==========================================================================
 
@@ -182,7 +177,6 @@ echo "EXPERIMENT: ${EXP_NAME}"
 echo "  Model: ${MODEL_CONFIG}"
 echo "  Position Encoding: RoPE"
 echo "  Cond %: 0.0-${COND_MAX}"
-echo "  Max Cond Blocks: ${MAX_COND_BLOCKS} (= max possible, no artificial limit)"
 echo "  Mode2 %: ${MODE2_MIN}-${MODE2_MAX}"
 echo "========================================="
 echo "Job ID: \$SLURM_JOB_ID"
@@ -266,7 +260,6 @@ python3 ./train.py \\
     --evaluation_sampling blockwise \\
     --min_conditioning 0 \\
     --min_evaluation 1 \\
-    --max_cond_blocks ${MAX_COND_BLOCKS} \\
     --mode2_boundary_cond_pct_min ${MODE2_MIN} \\
     --mode2_boundary_cond_pct_max ${MODE2_MAX} \\
     --use_attention_mask_for_valid \\
