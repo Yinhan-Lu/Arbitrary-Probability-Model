@@ -13,6 +13,7 @@ All test scripts are organized in this `tests/` folder for clarity and maintaina
 | **quick_test.py** | Fast model validation (instantiation + forward pass) | ~10s | `python tests/quick_test.py` |
 | **sanity.py** | Complete training pipeline test | ~3 min | `python tests/sanity.py` |
 | **test_checkpoint_loading.py** | Verify checkpoint save/load functionality | ~30s | `python tests/test_checkpoint_loading.py` |
+| **test_checkpoint_resume.py** | Verify preemption recovery (CSV truncation, pattern matching) | ~5s | `python tests/test_checkpoint_resume.py` |
 | **test_pretrained_loading.py** | Test HuggingFace model loading | ~1 min | `python tests/test_pretrained_loading.py` |
 | **test_detach_augmentation.py** | Test detach_augmentation parameter functionality | ~5s | `python tests/test_detach_augmentation.py` |
 | **test_detach_minimal.py** | Minimal detach test (MPS/CPU compatible, no heavy dependencies) | ~5s | `python tests/test_detach_minimal.py` |
@@ -46,6 +47,7 @@ python tests/sanity.py
 ### 1. Unit Tests (Fast: < 30s)
 - `quick_test.py` - Model instantiation and forward pass
 - `test_checkpoint_loading.py` - Checkpoint I/O
+- `test_checkpoint_resume.py` - Preemption recovery (CSV truncation, pattern matching)
 
 ### 2. Integration Tests (Medium: 30s - 5min)
 - `test_pretrained_loading.py` - HuggingFace integration
