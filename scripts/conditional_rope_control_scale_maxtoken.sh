@@ -215,8 +215,9 @@ echo "========================================="
 # =========================================================================
 # AUTO-RESUME LOGIC: Check for existing experiment and checkpoint
 # =========================================================================
-# Look for existing experiment folder matching this config (without timestamp)
-EXP_PATTERN="${EXP_NAME%_*}_*"  # Remove timestamp, add wildcard
+# Look for existing experiment folder matching this config (ignoring timestamp)
+# Use config variables directly to match any timestamp
+EXP_PATTERN="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_*"
 EXISTING_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
 RESUME_ARG=""
 
