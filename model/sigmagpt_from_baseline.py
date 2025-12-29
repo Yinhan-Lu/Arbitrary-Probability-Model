@@ -67,10 +67,23 @@ class MultiHeadAttention(nn.Module):
             )
         )
 
-    def forward(self, x):
+        # Dual-axis RoPE for Sigma GPT (optional)
+        self.position_encoding_type = getattr(config, 'position_encoding_type', 'learned')
+        if self.position_encoding_type == "dual_rope":
+            from model.rope import DualAxisRotaryEmbedding
+            self.rotary_emb = DualAxisRotaryEmbedding(
+                dim=self.head_dim,
+                max_seq_len=config.max_seq_len,
+                base_axis1=getattr(config, 'rope_base_axis1', 10000.0),
+                base_axis2=getattr(config, 'rope_base_axis2', 10000.0)
+            )
+
+    def forward(self, x, current_positions=None, next_positions=None):
         """
         Args:
             x: Input tensor of shape (batch_size, seq_len, n_embd)
+            current_positions: (batch_size, seq_len) - for dual_rope mode
+            next_positions: (batch_size, seq_len) - for dual_rope mode
 
         Returns:
             Output tensor of shape (batch_size, seq_len, n_embd)
@@ -87,6 +100,10 @@ class MultiHeadAttention(nn.Module):
         q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+
+        # Apply dual-axis RoPE if enabled
+        if self.position_encoding_type == "dual_rope" and current_positions is not None:
+            q, k = self.rotary_emb(q, k, current_positions, next_positions)
 
         # Compute attention scores: (B, n_head, T, T)
         attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
@@ -145,9 +162,9 @@ class TransformerBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(config.n_embd, eps=config.layer_norm_eps)
         self.mlp = FeedForward(config)
 
-    def forward(self, x):
+    def forward(self, x, current_positions=None, next_positions=None):
         # Pre-LayerNorm architecture (GPT-2 style)
-        x = x + self.attn(self.ln_1(x))
+        x = x + self.attn(self.ln_1(x), current_positions, next_positions)
         x = x + self.mlp(self.ln_2(x))
         return x
 
@@ -188,9 +205,17 @@ class SigmaGPTModel(nn.Module):
         # Token embeddings (standard)
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
 
-        # Position embeddings (CRITICAL: n_embd // 2 for double encoding)
-        # This is the key architectural difference from standard GPT-2
-        self.wpe = nn.Embedding(config.max_seq_len, config.n_embd // 2)
+        # Position encoding type: 'learned' (default) or 'dual_rope'
+        self.position_encoding_type = getattr(config, 'position_encoding_type', 'learned')
+
+        # Position embeddings (only for learned mode)
+        if self.position_encoding_type == "dual_rope":
+            # RoPE mode: no learned position embeddings
+            self.wpe = None
+        else:
+            # Learned mode: CRITICAL - n_embd // 2 for double encoding
+            # This is the key architectural difference from standard GPT-2
+            self.wpe = nn.Embedding(config.max_seq_len, config.n_embd // 2)
 
         self.drop = nn.Dropout(config.dropout)
 
@@ -211,7 +236,8 @@ class SigmaGPTModel(nn.Module):
         # Tie weights between token embeddings and lm_head (GPT-2 standard)
         self.lm_head.weight = self.wte.weight
 
-        print(f"Sigma GPT Model (from baseline) initialized with {self.get_num_params()/1e6:.2f}M parameters")
+        pos_enc_info = f"position_encoding={self.position_encoding_type}"
+        print(f"Sigma GPT Model (from baseline) initialized with {self.get_num_params()/1e6:.2f}M parameters, {pos_enc_info}")
 
     def _init_weights(self, module):
         """Initialize weights following GPT-2 paper"""
@@ -331,15 +357,32 @@ class SigmaGPTModel(nn.Module):
         # Token embeddings (standard)
         tok_emb = self.wte(idx)  # (B, T, n_embd)
 
-        # Position embeddings (double encoding - Sigma GPT's key innovation)
-        pos_emb = self._pos_emb(idx, order)  # (B, T, n_embd)
+        # Handle position encoding based on mode
+        if self.position_encoding_type == "dual_rope":
+            # RoPE mode: no position embeddings added to input
+            x = self.drop(tok_emb)
 
-        # Combine and apply dropout
-        x = self.drop(tok_emb + pos_emb)
+            # Extract positions for attention layers
+            current_positions = order[:, :-1]  # (B, T) - current positions
+            next_positions = order[:, 1:]      # (B, T) - next positions
+
+            # Clamp to valid range (order tensor may have seq_len as end marker)
+            current_positions = current_positions.clamp(max=self.config.max_seq_len - 1)
+            next_positions = next_positions.clamp(max=self.config.max_seq_len - 1)
+        else:
+            # Learned mode: position embeddings (double encoding - Sigma GPT's key innovation)
+            pos_emb = self._pos_emb(idx, order)  # (B, T, n_embd)
+
+            # Combine and apply dropout
+            x = self.drop(tok_emb + pos_emb)
+
+            # No position IDs needed for learned mode
+            current_positions = None
+            next_positions = None
 
         # Apply transformer blocks
         for block in self.blocks:
-            x = block(x)
+            x = block(x, current_positions, next_positions)
 
         # Final layer norm
         x = self.ln_f(x)

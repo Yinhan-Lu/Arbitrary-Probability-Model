@@ -145,3 +145,149 @@ class RotaryEmbedding(nn.Module):
 
         # Concatenate back to original dimension
         return torch.cat([rotated_x1, rotated_x2], dim=-1)
+
+
+class DualAxisRotaryEmbedding(nn.Module):
+    """
+    Dual-Axis Rotary Position Embedding for SigmaGPT
+
+    Splits head_dim into two halves:
+    - First half: rotated by current position (order[t])
+    - Second half: rotated by next position (order[t+1])
+
+    This mirrors SigmaGPT's double position encoding but uses RoPE
+    instead of learned embeddings.
+
+    Key insight: In SigmaGPT, position encoding needs to capture BOTH:
+    1. Where we are in the generation order (current position)
+    2. Where we're going next (next position)
+
+    By splitting the head dimension and applying different rotations,
+    the attention mechanism can learn to use both position signals.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        max_seq_len: int = 2048,
+        base_axis1: float = 10000.0,
+        base_axis2: float = 10000.0
+    ):
+        """
+        Args:
+            dim: Full head dimension (e.g., 64). Will be split into two halves.
+            max_seq_len: Maximum sequence length for precomputation
+            base_axis1: Base frequency for axis 1 (current position)
+            base_axis2: Base frequency for axis 2 (next position)
+        """
+        super().__init__()
+        self.dim = dim
+        self.half_dim = dim // 2
+        self.max_seq_len = max_seq_len
+        self.base_axis1 = base_axis1
+        self.base_axis2 = base_axis2
+
+        # Axis 1: inverse frequencies for first half (current position)
+        # Each half has half_dim/2 frequency components (since we duplicate for rotation)
+        inv_freq_1 = 1.0 / (base_axis1 ** (torch.arange(0, self.half_dim, 2).float() / self.half_dim))
+        self.register_buffer("inv_freq_1", inv_freq_1)  # (half_dim/2,)
+
+        # Axis 2: inverse frequencies for second half (next position)
+        inv_freq_2 = 1.0 / (base_axis2 ** (torch.arange(0, self.half_dim, 2).float() / self.half_dim))
+        self.register_buffer("inv_freq_2", inv_freq_2)  # (half_dim/2,)
+
+        # Build cache for both axes
+        self._build_cache(max_seq_len)
+
+    def _build_cache(self, seq_len: int):
+        """Precompute cos and sin values for both axes"""
+        positions = torch.arange(seq_len, dtype=self.inv_freq_1.dtype)
+
+        # Axis 1 cache (for current position)
+        angles_1 = torch.outer(positions, self.inv_freq_1)  # (seq_len, half_dim/2)
+        angles_1 = torch.cat([angles_1, angles_1], dim=-1)  # (seq_len, half_dim)
+        self.register_buffer("cos_cached_1", angles_1.cos())
+        self.register_buffer("sin_cached_1", angles_1.sin())
+
+        # Axis 2 cache (for next position)
+        angles_2 = torch.outer(positions, self.inv_freq_2)  # (seq_len, half_dim/2)
+        angles_2 = torch.cat([angles_2, angles_2], dim=-1)  # (seq_len, half_dim)
+        self.register_buffer("cos_cached_2", angles_2.cos())
+        self.register_buffer("sin_cached_2", angles_2.sin())
+
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        current_positions: torch.Tensor,
+        next_positions: torch.Tensor
+    ) -> tuple:
+        """
+        Apply dual-axis rotation to query and key tensors.
+
+        Args:
+            q: Query tensor (batch, n_head, seq_len, head_dim)
+            k: Key tensor (batch, n_head, seq_len, head_dim)
+            current_positions: (batch, seq_len) - from order[:, :-1]
+            next_positions: (batch, seq_len) - from order[:, 1:]
+
+        Returns:
+            q_rotated, k_rotated: Rotated tensors with same shape as input
+        """
+        # Split q and k into two halves
+        q1, q2 = q[..., :self.half_dim], q[..., self.half_dim:]
+        k1, k2 = k[..., :self.half_dim], k[..., self.half_dim:]
+
+        # Get cos/sin for current positions (clamp for end marker handling)
+        curr_pos = current_positions.clamp(max=self.max_seq_len - 1)
+        cos_1 = self.cos_cached_1[curr_pos]  # (batch, seq_len, half_dim)
+        sin_1 = self.sin_cached_1[curr_pos]
+
+        # Get cos/sin for next positions
+        next_pos = next_positions.clamp(max=self.max_seq_len - 1)
+        cos_2 = self.cos_cached_2[next_pos]  # (batch, seq_len, half_dim)
+        sin_2 = self.sin_cached_2[next_pos]
+
+        # Apply rotation to each half
+        q1_rot = self._apply_rotation(q1, cos_1, sin_1)
+        q2_rot = self._apply_rotation(q2, cos_2, sin_2)
+        k1_rot = self._apply_rotation(k1, cos_1, sin_1)
+        k2_rot = self._apply_rotation(k2, cos_2, sin_2)
+
+        # Concatenate back to full head_dim
+        q_rotated = torch.cat([q1_rot, q2_rot], dim=-1)
+        k_rotated = torch.cat([k1_rot, k2_rot], dim=-1)
+
+        return q_rotated, k_rotated
+
+    def _apply_rotation(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Apply 2D rotation to tensor with half_dim dimensions.
+
+        Args:
+            x: Input tensor (batch, n_head, seq_len, half_dim)
+            cos: Cosine values (batch, seq_len, half_dim)
+            sin: Sine values (batch, seq_len, half_dim)
+
+        Returns:
+            Rotated tensor with same shape as x
+        """
+        # Adjust shape for broadcasting: (batch, seq_len, half_dim) -> (batch, 1, seq_len, half_dim)
+        cos = cos.unsqueeze(1)
+        sin = sin.unsqueeze(1)
+
+        # Split into quarters for rotation pairs
+        quarter_dim = self.half_dim // 2
+        x1 = x[..., :quarter_dim]
+        x2 = x[..., quarter_dim:]
+
+        # Apply 2D rotation formula
+        rot_x1 = x1 * cos[..., :quarter_dim] - x2 * sin[..., :quarter_dim]
+        rot_x2 = x1 * sin[..., :quarter_dim] + x2 * cos[..., :quarter_dim]
+
+        return torch.cat([rot_x1, rot_x2], dim=-1)
