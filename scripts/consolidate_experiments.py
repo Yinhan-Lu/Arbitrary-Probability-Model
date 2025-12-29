@@ -129,9 +129,11 @@ def merge_metrics_csv(target_csv: Path, source_csvs: list[Path], dry_run: bool =
     # Concatenate and remove duplicates
     merged = pd.concat(all_dfs, ignore_index=True)
 
-    # Remove duplicates by step (keep first occurrence = earlier data)
+    # Remove duplicates by step
+    # Keep 'last' = prefer resume folder data (cleaner, from checkpoint)
+    # over original folder data (may have dirty data from interruption)
     if 'step' in merged.columns:
-        merged = merged.drop_duplicates(subset=['step'], keep='first')
+        merged = merged.drop_duplicates(subset=['step'], keep='last')
         merged = merged.sort_values('step').reset_index(drop=True)
 
     print(f"    - Merged: {len(merged)} rows (after deduplication)")
