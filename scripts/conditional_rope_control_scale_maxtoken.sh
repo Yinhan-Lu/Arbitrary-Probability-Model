@@ -229,8 +229,7 @@ if [ -n "\$EXISTING_EXP" ] && [ -d "\$EXISTING_EXP/checkpoints" ]; then
         echo "  Checkpoint: \$LATEST_CKPT"
         echo "========================================="
         RESUME_ARG="--resume_from \$LATEST_CKPT"
-        # Use existing experiment name (preserves original timestamp)
-        EXP_NAME=\$(basename "\$EXISTING_EXP")
+        # Note: EXP_NAME not needed - trainer auto-detects exp_dir from checkpoint path
     fi
 fi
 
@@ -285,7 +284,8 @@ echo "========================================="
 
 # Auto-generate visualization plots
 if [ \$EXIT_CODE -eq 0 ]; then
-    LATEST_EXP=\$(ls -dt ./experiments/${EXP_NAME}_* 2>/dev/null | head -1)
+    # Use same pattern to find experiment folder (works for both new and resumed training)
+    LATEST_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
     if [ -n "\$LATEST_EXP" ] && [ -d "\$LATEST_EXP" ]; then
         echo "========================================="
         echo "AUTO-GENERATING VISUALIZATION PLOTS"

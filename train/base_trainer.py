@@ -360,7 +360,7 @@ class BaseTrainer(ABC):
 
     def _setup_experiment_dir(self, args):
         """
-        Create experiment directory with timestamp
+        Create experiment directory with timestamp, or use existing dir when resuming
 
         Args:
             args: Command-line arguments
@@ -368,10 +368,23 @@ class BaseTrainer(ABC):
         Returns:
             Path: Experiment directory path
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        exp_name = f"{args.exp_name}_{timestamp}" if hasattr(args, 'exp_name') and args.exp_name else f"exp_{timestamp}"
+        # If resuming from checkpoint, use the checkpoint's experiment directory
+        if hasattr(args, 'resume_from') and args.resume_from:
+            checkpoint_path = Path(args.resume_from)
+            # Checkpoint path: experiments/exp_name/checkpoints/checkpoint_step_X.pt
+            # We want: experiments/exp_name
+            if 'checkpoints' in checkpoint_path.parts:
+                exp_dir = checkpoint_path.parent.parent
+                logger.info(f"Resuming in existing experiment directory: {exp_dir}")
+            else:
+                # Fallback: checkpoint is directly in exp dir
+                exp_dir = checkpoint_path.parent
+        else:
+            # New training: create timestamped directory
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            exp_name = f"{args.exp_name}_{timestamp}" if hasattr(args, 'exp_name') and args.exp_name else f"exp_{timestamp}"
+            exp_dir = Path(args.output_dir) / exp_name
 
-        exp_dir = Path(args.output_dir) / exp_name
         exp_dir.mkdir(parents=True, exist_ok=True)
 
         # Create subdirectories
