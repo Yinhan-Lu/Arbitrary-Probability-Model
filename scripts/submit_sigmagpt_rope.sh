@@ -158,8 +158,9 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
             # Convert COND_MAX to percentage (0.2 -> 20, 1.0 -> 100)
             COND_PCT=$(python3 -c "print(int($COND_MAX * 100))")
 
-            # Construct experiment name: sigmagpt_rope_{ordering}_{model}_cond0-{pct}_{timestamp}
-            EXP_NAME="sigmagpt_rope_${ORDERING}_${MODEL_CONFIG}_cond0-${COND_PCT}_${TIMESTAMP}"
+            # Construct experiment name (aligned with conditional script):
+            # cond0-{pct}_max_block_rope_{model}_sigmagpt_{ordering}_{timestamp}
+            EXP_NAME="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_sigmagpt_${ORDERING}_${TIMESTAMP}"
 
             # Construct job name (max 15 chars for SLURM)
             # s=sigmagpt, r=rope, t/s=temporal/scramble
@@ -189,8 +190,8 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
             cat > "$SCRIPT_FILE" << EOF
 #!/bin/bash
 #SBATCH --job-name=${JOB_NAME}
-#SBATCH --output=logs/sigmagpt_rope_${ORDERING}_${MODEL_CONFIG}_cond0-${COND_PCT}_%j.out
-#SBATCH --error=logs/sigmagpt_rope_${ORDERING}_${MODEL_CONFIG}_cond0-${COND_PCT}_%j.err
+#SBATCH --output=logs/cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_sigmagpt_${ORDERING}_%j.out
+#SBATCH --error=logs/cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_sigmagpt_${ORDERING}_%j.err
 #SBATCH --time=2-00:00:00
 #SBATCH --gres=gpu:${GPU_TYPE}
 #SBATCH --cpus-per-task=8
@@ -248,7 +249,7 @@ EXP_NAME="${EXP_NAME}"
 
 # Look for existing experiment folder matching this config (ignoring timestamp)
 # Use config variables directly to match any timestamp
-EXP_PATTERN="sigmagpt_rope_${ORDERING}_${MODEL_CONFIG}_cond0-${COND_PCT}_*"
+EXP_PATTERN="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_sigmagpt_${ORDERING}_*"
 EXISTING_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
 RESUME_ARG=""
 
@@ -367,5 +368,5 @@ echo "Cancel all:      scancel -u \$USER"
 echo "Job details:     scontrol show job <JOB_ID>"
 echo ""
 echo "After completion, compare results with:"
-echo "  python utils/plot_comparison_metrics.py experiments/sigmagpt_rope_*"
+echo "  python utils/plot_comparison_metrics.py experiments/cond0-*_sigmagpt_*"
 echo ""
