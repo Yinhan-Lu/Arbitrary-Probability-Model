@@ -1,0 +1,289 @@
+====================================================================================================
+PIPELINE DIFFERENCES ANALYSIS REPORT
+====================================================================================================
+
+## FINAL PERFORMANCE COMPARISON (Step 2500)
+
+| Mode | Legacy PPL | New PPL | Ratio (Legacy/New) | Change |
+|------|-----------|---------|-------------------|--------|
+| MODE1 | nan | nan | nanx | 🟡 Similar |
+| MODE2 | nan | nan | nanx | 🟡 Similar |
+| MODE3 | nan | nan | nanx | 🟡 Similar |
+| MODE4 | nan | nan | nanx | 🟡 Similar |
+| MODE5 | nan | nan | nanx | 🟡 Similar |
+
+## TRAINING LOSS
+
+- Legacy final training loss: 3.5056
+- New final training loss: 2.2518
+- Difference: 1.2538
+- ⚠️  New pipeline has lower training loss (potential overfitting?)
+
+## MODE 2 DIVERGENCE ANALYSIS
+
+- **Divergence Point**: Step 1500
+- Mode 2 perplexities started diverging significantly (>2x ratio) at step 1500
+
+## MODE 2 PROGRESSION
+
+| Step | Legacy PPL | New PPL | Ratio | Status |
+|------|-----------|---------|-------|--------|
+| 10 | nan | nan | nanx | ⚪ Similar |
+| 20 | nan | nan | nanx | ⚪ Similar |
+| 30 | nan | nan | nanx | ⚪ Similar |
+| 40 | nan | nan | nanx | ⚪ Similar |
+| 50 | nan | nan | nanx | ⚪ Similar |
+| 60 | nan | nan | nanx | ⚪ Similar |
+| 70 | nan | nan | nanx | ⚪ Similar |
+| 80 | nan | nan | nanx | ⚪ Similar |
+| 90 | nan | nan | nanx | ⚪ Similar |
+| 100 | nan | nan | nanx | ⚪ Similar |
+| 110 | nan | nan | nanx | ⚪ Similar |
+| 120 | nan | nan | nanx | ⚪ Similar |
+| 130 | nan | nan | nanx | ⚪ Similar |
+| 140 | nan | nan | nanx | ⚪ Similar |
+| 150 | nan | nan | nanx | ⚪ Similar |
+| 160 | nan | nan | nanx | ⚪ Similar |
+| 170 | nan | nan | nanx | ⚪ Similar |
+| 180 | nan | nan | nanx | ⚪ Similar |
+| 190 | nan | nan | nanx | ⚪ Similar |
+| 200 | nan | nan | nanx | ⚪ Similar |
+| 210 | nan | nan | nanx | ⚪ Similar |
+| 220 | nan | nan | nanx | ⚪ Similar |
+| 230 | nan | nan | nanx | ⚪ Similar |
+| 240 | nan | nan | nanx | ⚪ Similar |
+| 250 | nan | nan | nanx | ⚪ Similar |
+| 260 | nan | nan | nanx | ⚪ Similar |
+| 270 | nan | nan | nanx | ⚪ Similar |
+| 280 | nan | nan | nanx | ⚪ Similar |
+| 290 | nan | nan | nanx | ⚪ Similar |
+| 300 | nan | nan | nanx | ⚪ Similar |
+| 310 | nan | nan | nanx | ⚪ Similar |
+| 320 | nan | nan | nanx | ⚪ Similar |
+| 330 | nan | nan | nanx | ⚪ Similar |
+| 340 | nan | nan | nanx | ⚪ Similar |
+| 350 | nan | nan | nanx | ⚪ Similar |
+| 360 | nan | nan | nanx | ⚪ Similar |
+| 370 | nan | nan | nanx | ⚪ Similar |
+| 380 | nan | nan | nanx | ⚪ Similar |
+| 390 | nan | nan | nanx | ⚪ Similar |
+| 400 | nan | nan | nanx | ⚪ Similar |
+| 410 | nan | nan | nanx | ⚪ Similar |
+| 420 | nan | nan | nanx | ⚪ Similar |
+| 430 | nan | nan | nanx | ⚪ Similar |
+| 440 | nan | nan | nanx | ⚪ Similar |
+| 450 | nan | nan | nanx | ⚪ Similar |
+| 460 | nan | nan | nanx | ⚪ Similar |
+| 470 | nan | nan | nanx | ⚪ Similar |
+| 480 | nan | nan | nanx | ⚪ Similar |
+| 490 | nan | nan | nanx | ⚪ Similar |
+| 500 | nan | nan | nanx | ⚪ Similar |
+| 500 | 222.25 | 242.06 | 0.92x | ⚪ Similar |
+| 510 | nan | nan | nanx | ⚪ Similar |
+| 520 | nan | nan | nanx | ⚪ Similar |
+| 530 | nan | nan | nanx | ⚪ Similar |
+| 540 | nan | nan | nanx | ⚪ Similar |
+| 550 | nan | nan | nanx | ⚪ Similar |
+| 560 | nan | nan | nanx | ⚪ Similar |
+| 570 | nan | nan | nanx | ⚪ Similar |
+| 580 | nan | nan | nanx | ⚪ Similar |
+| 590 | nan | nan | nanx | ⚪ Similar |
+| 600 | nan | nan | nanx | ⚪ Similar |
+| 610 | nan | nan | nanx | ⚪ Similar |
+| 620 | nan | nan | nanx | ⚪ Similar |
+| 630 | nan | nan | nanx | ⚪ Similar |
+| 640 | nan | nan | nanx | ⚪ Similar |
+| 650 | nan | nan | nanx | ⚪ Similar |
+| 660 | nan | nan | nanx | ⚪ Similar |
+| 670 | nan | nan | nanx | ⚪ Similar |
+| 680 | nan | nan | nanx | ⚪ Similar |
+| 690 | nan | nan | nanx | ⚪ Similar |
+| 700 | nan | nan | nanx | ⚪ Similar |
+| 710 | nan | nan | nanx | ⚪ Similar |
+| 720 | nan | nan | nanx | ⚪ Similar |
+| 730 | nan | nan | nanx | ⚪ Similar |
+| 740 | nan | nan | nanx | ⚪ Similar |
+| 750 | nan | nan | nanx | ⚪ Similar |
+| 760 | nan | nan | nanx | ⚪ Similar |
+| 770 | nan | nan | nanx | ⚪ Similar |
+| 780 | nan | nan | nanx | ⚪ Similar |
+| 790 | nan | nan | nanx | ⚪ Similar |
+| 800 | nan | nan | nanx | ⚪ Similar |
+| 810 | nan | nan | nanx | ⚪ Similar |
+| 820 | nan | nan | nanx | ⚪ Similar |
+| 830 | nan | nan | nanx | ⚪ Similar |
+| 840 | nan | nan | nanx | ⚪ Similar |
+| 850 | nan | nan | nanx | ⚪ Similar |
+| 860 | nan | nan | nanx | ⚪ Similar |
+| 870 | nan | nan | nanx | ⚪ Similar |
+| 880 | nan | nan | nanx | ⚪ Similar |
+| 890 | nan | nan | nanx | ⚪ Similar |
+| 900 | nan | nan | nanx | ⚪ Similar |
+| 910 | nan | nan | nanx | ⚪ Similar |
+| 920 | nan | nan | nanx | ⚪ Similar |
+| 930 | nan | nan | nanx | ⚪ Similar |
+| 940 | nan | nan | nanx | ⚪ Similar |
+| 950 | nan | nan | nanx | ⚪ Similar |
+| 960 | nan | nan | nanx | ⚪ Similar |
+| 970 | nan | nan | nanx | ⚪ Similar |
+| 980 | nan | nan | nanx | ⚪ Similar |
+| 990 | nan | nan | nanx | ⚪ Similar |
+| 1000 | nan | nan | nanx | ⚪ Similar |
+| 1000 | 162.95 | 134.95 | 1.21x | 🟡 Moderate divergence |
+| 1010 | nan | nan | nanx | ⚪ Similar |
+| 1020 | nan | nan | nanx | ⚪ Similar |
+| 1030 | nan | nan | nanx | ⚪ Similar |
+| 1040 | nan | nan | nanx | ⚪ Similar |
+| 1050 | nan | nan | nanx | ⚪ Similar |
+| 1060 | nan | nan | nanx | ⚪ Similar |
+| 1070 | nan | nan | nanx | ⚪ Similar |
+| 1080 | nan | nan | nanx | ⚪ Similar |
+| 1090 | nan | nan | nanx | ⚪ Similar |
+| 1100 | nan | nan | nanx | ⚪ Similar |
+| 1110 | nan | nan | nanx | ⚪ Similar |
+| 1120 | nan | nan | nanx | ⚪ Similar |
+| 1130 | nan | nan | nanx | ⚪ Similar |
+| 1140 | nan | nan | nanx | ⚪ Similar |
+| 1150 | nan | nan | nanx | ⚪ Similar |
+| 1160 | nan | nan | nanx | ⚪ Similar |
+| 1170 | nan | nan | nanx | ⚪ Similar |
+| 1180 | nan | nan | nanx | ⚪ Similar |
+| 1190 | nan | nan | nanx | ⚪ Similar |
+| 1200 | nan | nan | nanx | ⚪ Similar |
+| 1210 | nan | nan | nanx | ⚪ Similar |
+| 1220 | nan | nan | nanx | ⚪ Similar |
+| 1230 | nan | nan | nanx | ⚪ Similar |
+| 1240 | nan | nan | nanx | ⚪ Similar |
+| 1250 | nan | nan | nanx | ⚪ Similar |
+| 1260 | nan | nan | nanx | ⚪ Similar |
+| 1270 | nan | nan | nanx | ⚪ Similar |
+| 1280 | nan | nan | nanx | ⚪ Similar |
+| 1290 | nan | nan | nanx | ⚪ Similar |
+| 1300 | nan | nan | nanx | ⚪ Similar |
+| 1310 | nan | nan | nanx | ⚪ Similar |
+| 1320 | nan | nan | nanx | ⚪ Similar |
+| 1330 | nan | nan | nanx | ⚪ Similar |
+| 1340 | nan | nan | nanx | ⚪ Similar |
+| 1350 | nan | nan | nanx | ⚪ Similar |
+| 1360 | nan | nan | nanx | ⚪ Similar |
+| 1370 | nan | nan | nanx | ⚪ Similar |
+| 1380 | nan | nan | nanx | ⚪ Similar |
+| 1390 | nan | nan | nanx | ⚪ Similar |
+| 1400 | nan | nan | nanx | ⚪ Similar |
+| 1410 | nan | nan | nanx | ⚪ Similar |
+| 1420 | nan | nan | nanx | ⚪ Similar |
+| 1430 | nan | nan | nanx | ⚪ Similar |
+| 1440 | nan | nan | nanx | ⚪ Similar |
+| 1450 | nan | nan | nanx | ⚪ Similar |
+| 1460 | nan | nan | nanx | ⚪ Similar |
+| 1470 | nan | nan | nanx | ⚪ Similar |
+| 1480 | nan | nan | nanx | ⚪ Similar |
+| 1490 | nan | nan | nanx | ⚪ Similar |
+| 1500 | nan | nan | nanx | ⚪ Similar |
+| 1500 | 137.18 | 68.46 | 2.00x | 🔴 Large divergence |
+| 1510 | nan | nan | nanx | ⚪ Similar |
+| 1520 | nan | nan | nanx | ⚪ Similar |
+| 1530 | nan | nan | nanx | ⚪ Similar |
+| 1540 | nan | nan | nanx | ⚪ Similar |
+| 1550 | nan | nan | nanx | ⚪ Similar |
+| 1560 | nan | nan | nanx | ⚪ Similar |
+| 1570 | nan | nan | nanx | ⚪ Similar |
+| 1580 | nan | nan | nanx | ⚪ Similar |
+| 1590 | nan | nan | nanx | ⚪ Similar |
+| 1600 | nan | nan | nanx | ⚪ Similar |
+| 1610 | nan | nan | nanx | ⚪ Similar |
+| 1620 | nan | nan | nanx | ⚪ Similar |
+| 1630 | nan | nan | nanx | ⚪ Similar |
+| 1640 | nan | nan | nanx | ⚪ Similar |
+| 1650 | nan | nan | nanx | ⚪ Similar |
+| 1660 | nan | nan | nanx | ⚪ Similar |
+| 1670 | nan | nan | nanx | ⚪ Similar |
+| 1680 | nan | nan | nanx | ⚪ Similar |
+| 1690 | nan | nan | nanx | ⚪ Similar |
+| 1700 | nan | nan | nanx | ⚪ Similar |
+| 1710 | nan | nan | nanx | ⚪ Similar |
+| 1720 | nan | nan | nanx | ⚪ Similar |
+| 1730 | nan | nan | nanx | ⚪ Similar |
+| 1740 | nan | nan | nanx | ⚪ Similar |
+| 1750 | nan | nan | nanx | ⚪ Similar |
+| 1760 | nan | nan | nanx | ⚪ Similar |
+| 1770 | nan | nan | nanx | ⚪ Similar |
+| 1780 | nan | nan | nanx | ⚪ Similar |
+| 1790 | nan | nan | nanx | ⚪ Similar |
+| 1800 | nan | nan | nanx | ⚪ Similar |
+| 1810 | nan | nan | nanx | ⚪ Similar |
+| 1820 | nan | nan | nanx | ⚪ Similar |
+| 1830 | nan | nan | nanx | ⚪ Similar |
+| 1840 | nan | nan | nanx | ⚪ Similar |
+| 1850 | nan | nan | nanx | ⚪ Similar |
+| 1860 | nan | nan | nanx | ⚪ Similar |
+| 1870 | nan | nan | nanx | ⚪ Similar |
+| 1880 | nan | nan | nanx | ⚪ Similar |
+| 1890 | nan | nan | nanx | ⚪ Similar |
+| 1900 | nan | nan | nanx | ⚪ Similar |
+| 1910 | nan | nan | nanx | ⚪ Similar |
+| 1920 | nan | nan | nanx | ⚪ Similar |
+| 1930 | nan | nan | nanx | ⚪ Similar |
+| 1940 | nan | nan | nanx | ⚪ Similar |
+| 1950 | nan | nan | nanx | ⚪ Similar |
+| 1960 | nan | nan | nanx | ⚪ Similar |
+| 1970 | nan | nan | nanx | ⚪ Similar |
+| 1980 | nan | nan | nanx | ⚪ Similar |
+| 1990 | nan | nan | nanx | ⚪ Similar |
+| 2000 | nan | nan | nanx | ⚪ Similar |
+| 2000 | 147.75 | 24.34 | 6.07x | 🔴 Large divergence |
+| 2010 | nan | nan | nanx | ⚪ Similar |
+| 2020 | nan | nan | nanx | ⚪ Similar |
+| 2030 | nan | nan | nanx | ⚪ Similar |
+| 2040 | nan | nan | nanx | ⚪ Similar |
+| 2050 | nan | nan | nanx | ⚪ Similar |
+| 2060 | nan | nan | nanx | ⚪ Similar |
+| 2070 | nan | nan | nanx | ⚪ Similar |
+| 2080 | nan | nan | nanx | ⚪ Similar |
+| 2090 | nan | nan | nanx | ⚪ Similar |
+| 2100 | nan | nan | nanx | ⚪ Similar |
+| 2110 | nan | nan | nanx | ⚪ Similar |
+| 2120 | nan | nan | nanx | ⚪ Similar |
+| 2130 | nan | nan | nanx | ⚪ Similar |
+| 2140 | nan | nan | nanx | ⚪ Similar |
+| 2150 | nan | nan | nanx | ⚪ Similar |
+| 2160 | nan | nan | nanx | ⚪ Similar |
+| 2170 | nan | nan | nanx | ⚪ Similar |
+| 2180 | nan | nan | nanx | ⚪ Similar |
+| 2190 | nan | nan | nanx | ⚪ Similar |
+| 2200 | nan | nan | nanx | ⚪ Similar |
+| 2210 | nan | nan | nanx | ⚪ Similar |
+| 2220 | nan | nan | nanx | ⚪ Similar |
+| 2230 | nan | nan | nanx | ⚪ Similar |
+| 2240 | nan | nan | nanx | ⚪ Similar |
+| 2250 | nan | nan | nanx | ⚪ Similar |
+| 2260 | nan | nan | nanx | ⚪ Similar |
+| 2270 | nan | nan | nanx | ⚪ Similar |
+| 2280 | nan | nan | nanx | ⚪ Similar |
+| 2290 | nan | nan | nanx | ⚪ Similar |
+| 2300 | nan | nan | nanx | ⚪ Similar |
+| 2310 | nan | nan | nanx | ⚪ Similar |
+| 2320 | nan | nan | nanx | ⚪ Similar |
+| 2330 | nan | nan | nanx | ⚪ Similar |
+| 2340 | nan | nan | nanx | ⚪ Similar |
+| 2350 | nan | nan | nanx | ⚪ Similar |
+| 2360 | nan | nan | nanx | ⚪ Similar |
+| 2370 | nan | nan | nanx | ⚪ Similar |
+| 2380 | nan | nan | nanx | ⚪ Similar |
+| 2390 | nan | nan | nanx | ⚪ Similar |
+| 2400 | nan | nan | nanx | ⚪ Similar |
+| 2410 | nan | nan | nanx | ⚪ Similar |
+| 2420 | nan | nan | nanx | ⚪ Similar |
+| 2430 | nan | nan | nanx | ⚪ Similar |
+| 2440 | nan | nan | nanx | ⚪ Similar |
+| 2450 | nan | nan | nanx | ⚪ Similar |
+| 2460 | nan | nan | nanx | ⚪ Similar |
+| 2470 | nan | nan | nanx | ⚪ Similar |
+| 2480 | nan | nan | nanx | ⚪ Similar |
+| 2490 | nan | nan | nanx | ⚪ Similar |
+| 2500 | nan | nan | nanx | ⚪ Similar |
+| 2500 | 120.52 | 7.16 | 16.83x | 🔴 Large divergence |
+| 2510 | nan | nan | nanx | ⚪ Similar |
+| 2520 | nan | nan | nanx | ⚪ Similar |
+
+====================================================================================================
