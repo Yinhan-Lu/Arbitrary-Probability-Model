@@ -294,8 +294,6 @@ python3 ./train.py \\
     --eval_pct_max 1.0 \\
     --conditioning_sampling blockwise \\
     --evaluation_sampling blockwise \\
-    --min_conditioning 0 \\
-    --min_evaluation 1 \\
     --mode2_boundary_cond_pct_min ${MODE2_MIN} \\
     --mode2_boundary_cond_pct_max ${MODE2_MAX} \\
     --logging_steps 10 \\
