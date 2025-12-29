@@ -111,6 +111,14 @@ class SigmaGPTTrainer(BaseTrainer):
         # Get model configuration
         self.config = get_config(self.args.model_config)
 
+        # Apply position encoding type from CLI args
+        # For SigmaGPT, 'rope' means 'dual_rope' (dual-axis RoPE for current + next position)
+        position_encoding_type = getattr(self.args, 'position_encoding_type', 'learned')
+        if position_encoding_type == 'rope':
+            position_encoding_type = 'dual_rope'
+        self.config.position_encoding_type = position_encoding_type
+        logger.info(f"Position encoding type: {self.config.position_encoding_type}")
+
         # Simple tokenizer (no special tokens needed)
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         self.tokenizer.pad_token = self.tokenizer.eos_token
