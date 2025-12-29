@@ -1,0 +1,69 @@
+=========================================
+SIGMAGPT ROPE ABLATION STUDY
+=========================================
+Model sizes: distilgpt2 gpt2 gpt2_medium
+Ordering modes: temporal random_scramble
+Conditioning configs: 5
+Total experiments: 30
+
+----------------------------------------
+Experiment: cond0-20_max_block_rope_distilgpt2_sigmagpt_temporal_20251229_092519
+  Model: distilgpt2
+  Ordering: temporal
+  Cond: 0.0-0.2
+  Mode2: 0.00-0.20
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+  Submitted: Job ID 8373724
+----------------------------------------
+Experiment: cond0-40_max_block_rope_distilgpt2_sigmagpt_temporal_20251229_092519
+  Model: distilgpt2
+  Ordering: temporal
+  Cond: 0.0-0.4
+  Mode2: 0.00-0.40
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+  Submitted: Job ID 8373725
+----------------------------------------
+Experiment: cond0-60_max_block_rope_distilgpt2_sigmagpt_temporal_20251229_092520
+  Model: distilgpt2
+  Ordering: temporal
+  Cond: 0.0-0.6
+  Mode2: 0.00-0.60
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+  Submitted: Job ID 8373726
+----------------------------------------
+Experiment: cond0-80_max_block_rope_distilgpt2_sigmagpt_temporal_20251229_092520
+  Model: distilgpt2
+  Ordering: temporal
+  Cond: 0.0-0.8
+  Mode2: 0.00-0.80
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+  Submitted: Job ID 8373727
+----------------------------------------
+Experiment: cond0-100_max_block_rope_distilgpt2_sigmagpt_temporal_20251229_092521
+  Model: distilgpt2
+  Ordering: temporal
+  Cond: 0.0-1.0
+  Mode2: 0.00-1.00
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+  Submitted: Job ID 8373728
+----------------------------------------
+Experiment: cond0-20_max_block_rope_distilgpt2_sigmagpt_random_scramble_20251229_092521
+  Model: distilgpt2
+  Ordering: random_scramble
+  Cond: 0.0-0.2
+  Mode2: 0.00-0.20
+sbatch: [00;36m--------------------------------------------------------------------------------------------------
+sbatch: # Using default long partition
+sbatch: --------------------------------------------------------------------------------------------------[00m
+  Submitted: Job ID 8373729
+[2025-12-29T09:25:22.443] error: *** JOB 8373723 ON cn-f003 CANCELLED AT 2025-12-29T09:25:22 DUE to SIGNAL Terminated ***
