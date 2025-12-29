@@ -27,53 +27,71 @@ import pandas as pd
 TIMESTAMP_PATTERN = re.compile(r'_(\d{8}_\d{6})')
 
 
-def extract_base_name_and_timestamps(folder_name: str) -> tuple[str, list[str]]:
-    """
-    Extract base experiment name and list of timestamps from folder name.
-
-    Example:
-        'cond0-60_max_block_rope_gpt2_conditional_20251227_070135_20251227_204239'
-        -> ('cond0-60_max_block_rope_gpt2_conditional', ['20251227_070135', '20251227_204239'])
-    """
-    timestamps = TIMESTAMP_PATTERN.findall(folder_name)
-
-    if not timestamps:
-        return folder_name, []
-
-    # Remove all timestamps to get base name
-    base_name = folder_name
-    for ts in timestamps:
-        base_name = base_name.replace(f'_{ts}', '')
-
-    return base_name, timestamps
+def count_timestamps(folder_name: str) -> int:
+    """Count number of timestamps in folder name."""
+    return len(TIMESTAMP_PATTERN.findall(folder_name))
 
 
 def find_experiment_groups(experiments_dir: Path) -> dict[str, list[Path]]:
     """
-    Group experiment folders by their base name.
+    Group experiment folders by their resume chain.
+
+    Key insight: If folder B's name starts with folder A's name + "_",
+    then B is a resume of A (due to the bug that appended timestamps).
+
+    Example chain:
+        cond0-60_..._20251227_070135                                    (original)
+        cond0-60_..._20251227_070135_20251227_204239                    (resume 1)
+        cond0-60_..._20251227_070135_20251227_204239_20251228_115938    (resume 2)
+
+    NOT a chain (different experiments):
+        cond0-60_..._20251227_070135
+        cond0-60_..._20251228_100000  <- Different first timestamp = different experiment
 
     Returns:
-        Dict mapping base_name -> list of folders (sorted by timestamp count)
+        Dict mapping original_folder_name -> list of folders in chain (sorted by name length)
     """
-    groups = defaultdict(list)
-
+    # Get all folders with at least one timestamp
+    folders_with_timestamps = []
     for folder in experiments_dir.iterdir():
-        if not folder.is_dir():
+        if folder.is_dir() and count_timestamps(folder.name) >= 1:
+            folders_with_timestamps.append(folder)
+
+    # Sort by name length (shorter = more likely to be original)
+    folders_with_timestamps.sort(key=lambda f: len(f.name))
+
+    # Build chains: find folders that are prefixes of other folders
+    chains = {}  # original_name -> [original, resume1, resume2, ...]
+    assigned = set()  # folders already assigned to a chain
+
+    for folder in folders_with_timestamps:
+        if folder.name in assigned:
             continue
 
-        base_name, timestamps = extract_base_name_and_timestamps(folder.name)
+        # Start a new chain with this folder as the original
+        chain = [folder]
+        assigned.add(folder.name)
 
-        # Only group folders that have timestamps (ignore non-timestamped folders)
-        if timestamps:
-            groups[base_name].append((folder, len(timestamps), timestamps[0] if timestamps else ''))
+        # Find all folders that start with this folder's name + "_" + timestamp
+        prefix = folder.name + "_"
+        for other in folders_with_timestamps:
+            if other.name in assigned:
+                continue
+            if other.name.startswith(prefix):
+                # Verify the suffix is timestamp(s)
+                suffix = other.name[len(folder.name):]
+                if TIMESTAMP_PATTERN.match(suffix):
+                    chain.append(other)
+                    assigned.add(other.name)
 
-    # Sort each group by: 1) number of timestamps (fewer = earlier), 2) first timestamp
-    result = {}
-    for base_name, folders in groups.items():
-        sorted_folders = sorted(folders, key=lambda x: (x[1], x[2]))
-        result[base_name] = [f[0] for f in sorted_folders]
+        # Sort chain by name length (original first, then resumes in order)
+        chain.sort(key=lambda f: len(f.name))
 
-    return result
+        # Only keep chains with more than one folder (needs merging)
+        if len(chain) > 1:
+            chains[folder.name] = chain
+
+    return chains
 
 
 def merge_metrics_csv(target_csv: Path, source_csvs: list[Path], dry_run: bool = False) -> int:
@@ -163,22 +181,26 @@ def merge_checkpoints(target_dir: Path, source_dirs: list[Path], dry_run: bool =
     return copied
 
 
-def consolidate_group(base_name: str, folders: list[Path], dry_run: bool = False, delete_source: bool = False):
+def consolidate_group(original_name: str, folders: list[Path], dry_run: bool = False, delete_source: bool = False):
     """
-    Consolidate a group of experiment folders into one.
+    Consolidate a chain of experiment folders into one.
+
+    Args:
+        original_name: Name of the original experiment folder
+        folders: List of folders in the chain [original, resume1, resume2, ...]
     """
     if len(folders) <= 1:
         return  # Nothing to merge
 
-    target_folder = folders[0]  # Folder with fewest timestamps
-    source_folders = folders[1:]
+    target_folder = folders[0]  # Original folder (shortest name)
+    source_folders = folders[1:]  # Resume folders (with appended timestamps)
 
     print(f"\n{'='*60}")
-    print(f"Consolidating: {base_name}")
-    print(f"  Target: {target_folder.name}")
-    for sf in source_folders:
-        print(f"  Source: {sf.name}")
+    print(f"RESUME CHAIN DETECTED ({len(folders)} folders)")
     print(f"{'='*60}")
+    print(f"  [ORIGINAL] {target_folder.name}")
+    for i, sf in enumerate(source_folders, 1):
+        print(f"  [RESUME {i}] {sf.name}")
 
     # Merge metrics.csv
     print("\n  [Merging metrics.csv]")
@@ -279,13 +301,13 @@ def main():
 
     # Show summary
     print("\n" + "=" * 60)
-    print("EXPERIMENTS TO CONSOLIDATE:")
+    print("RESUME CHAINS TO CONSOLIDATE:")
     print("=" * 60)
-    for base_name, folders in merge_needed.items():
-        print(f"\n{base_name}:")
-        for i, f in enumerate(folders):
-            marker = "[TARGET]" if i == 0 else "[SOURCE]"
-            print(f"  {marker} {f.name}")
+    for original_name, folders in merge_needed.items():
+        print(f"\nChain ({len(folders)} folders):")
+        print(f"  [ORIGINAL] {folders[0].name}")
+        for i, f in enumerate(folders[1:], 1):
+            print(f"  [RESUME {i}] {f.name}")
 
     # Consolidate each group
     for base_name, folders in merge_needed.items():
