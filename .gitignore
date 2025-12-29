@@ -182,6 +182,9 @@ md_report/
 # Experiments - track all except checkpoints
 experiments/**/checkpoints/
 
+# Un-ignore logs directory inside experiments (required for file negations to work)
+!experiments/**/logs/
+
 # Allow experiment data files (override global *.csv and *.png patterns)
 !experiments/**/*.csv
 !experiments/**/*.png
