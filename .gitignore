@@ -179,7 +179,14 @@ docs/
 implementation_record/
 slides/
 md_report/
-experiments/
+# Experiments - track all except checkpoints
+experiments/**/checkpoints/
+
+# Allow experiment data files (override global *.csv and *.png patterns)
+!experiments/**/*.csv
+!experiments/**/*.png
+!experiments/**/*.json
+
 sigma-gpt/
 result_of_two_pipeline/
 Updates-*.md
