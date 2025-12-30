@@ -215,7 +215,8 @@ class SigmaGPTTrainer(BaseTrainer):
             dataset_name=self.args.dataset_name,
             dataset_config=self.args.dataset_config,
             primary_dataset_only=self.args.primary_dataset_only,
-            num_samples=self.args.num_train_samples
+            num_samples=self.args.num_train_samples,
+            seed=getattr(self.args, 'seed', 42)  # For deterministic checkpoint resume
         )
         logger.info(f"Training dataloader created with {len(self.train_loader)} batches per epoch")
 

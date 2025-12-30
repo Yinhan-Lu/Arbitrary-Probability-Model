@@ -196,7 +196,8 @@ class ConditionalTrainer(BaseTrainer):
             num_workers=self.args.num_workers,
             streaming=False,
             num_samples=self.args.num_train_samples,
-            collate_fn=train_collate_fn
+            collate_fn=train_collate_fn,
+            seed=getattr(self.args, 'seed', 42)  # For deterministic checkpoint resume
         )
 
         if self.args.do_eval:

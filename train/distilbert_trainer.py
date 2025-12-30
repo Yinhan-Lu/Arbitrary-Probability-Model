@@ -69,6 +69,7 @@ class DistilBertTrainer(BaseTrainer):
             streaming=getattr(self.args, "streaming", False),
             num_samples=self.args.num_train_samples,
             collate_fn=collator,
+            seed=getattr(self.args, 'seed', 42)  # For deterministic checkpoint resume
         )
 
         if self.args.do_eval:

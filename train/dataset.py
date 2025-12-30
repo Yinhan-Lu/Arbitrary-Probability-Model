@@ -783,7 +783,8 @@ def get_dataloader(
     dataset_name="wikitext",
     dataset_config="wikitext-103-raw-v1",
     primary_dataset_only=True,
-    collate_fn=None
+    collate_fn=None,
+    seed=42
 ):
     """
     Create a DataLoader for Wikipedia dataset
@@ -799,6 +800,7 @@ def get_dataloader(
         dataset_config: Dataset configuration/version
         primary_dataset_only: If True, only use specified dataset without fallback
         collate_fn: Optional custom collate function for batching
+        seed: Random seed for deterministic shuffling (used for checkpoint resume)
 
     Returns:
         DataLoader instance
@@ -846,15 +848,26 @@ def get_dataloader(
             primary_dataset_only=primary_dataset_only
         )
 
+        # Create deterministic generator for reproducible shuffling
+        # This is critical for checkpoint resume to work correctly
+        shuffle_generator = None
+        if split == "train":
+            shuffle_generator = torch.Generator()
+            shuffle_generator.manual_seed(seed)
+
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=(split == "train"),
+            generator=shuffle_generator,  # Use deterministic generator for shuffle
             num_workers=num_workers,
             pin_memory=True,
             collate_fn=collate_fn,
             worker_init_fn=worker_init_fn  # Ensure reproducible worker seeds
         )
+
+        # Store generator reference for checkpoint save/restore
+        dataloader.shuffle_generator = shuffle_generator
 
         return dataloader
 

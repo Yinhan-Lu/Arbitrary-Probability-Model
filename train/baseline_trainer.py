@@ -76,7 +76,8 @@ class BaselineTrainer(BaseTrainer):
             batch_size=self.args.batch_size,
             num_workers=self.args.num_workers,
             streaming=getattr(self.args, 'streaming', False),
-            num_samples=self.args.num_train_samples
+            num_samples=self.args.num_train_samples,
+            seed=getattr(self.args, 'seed', 42)  # For deterministic checkpoint resume
         )
 
         logger.info(f"Training batches: {len(self.train_loader) if hasattr(self.train_loader, '__len__') else 'streaming'}")

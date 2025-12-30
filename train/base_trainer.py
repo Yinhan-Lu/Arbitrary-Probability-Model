@@ -538,9 +538,24 @@ class BaseTrainer(ABC):
             self.epoch = epoch
             logger.info(f"\nEpoch {epoch + 1}/{self.args.num_epochs}")
 
+            # Calculate batches to skip for deterministic resume
+            # Only skip in the first epoch after resume
+            skip_batches = 0
+            if hasattr(self, 'resume_batch_idx') and self.resume_batch_idx > 0:
+                skip_batches = self.resume_batch_idx + 1  # +1 to start from the batch after checkpoint
+                self.resume_batch_idx = 0  # Only skip once
+                logger.info(f"Resuming: skipping first {skip_batches} batches (already processed)")
+
             progress_bar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), desc=f"Epoch {epoch + 1}")
 
             for batch_idx, batch in progress_bar:
+                # Skip already processed batches (for deterministic resume)
+                if batch_idx < skip_batches:
+                    continue
+
+                # Track current batch index for checkpoint save
+                self.current_batch_idx = batch_idx
+
                 # Calculate accumulation flags FIRST (needed for loss scaling)
                 is_accum_step = (batch_idx + 1) % self.args.gradient_accumulation_steps == 0
                 is_last_batch = (batch_idx + 1) == len(self.train_loader)
@@ -683,15 +698,22 @@ class BaseTrainer(ABC):
         """
         checkpoint_path = self.checkpoint_dir / f"{name}.pt"
 
+        # Get generator state for deterministic resume
+        generator_state = None
+        if hasattr(self.train_loader, 'shuffle_generator') and self.train_loader.shuffle_generator is not None:
+            generator_state = self.train_loader.shuffle_generator.get_state()
+
         checkpoint = {
             "global_step": self.global_step,
             "epoch": self.epoch,
+            "batch_idx": getattr(self, 'current_batch_idx', 0),  # For deterministic resume
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
             "best_val_loss": self.best_val_loss,
             "config": self.config.__dict__ if hasattr(self, 'config') else {},
-            "args": vars(self.args)
+            "args": vars(self.args),
+            "generator_state": generator_state  # For deterministic shuffle resume
         }
 
         torch.save(checkpoint, checkpoint_path)
@@ -716,8 +738,17 @@ class BaseTrainer(ABC):
         self.epoch = checkpoint["epoch"]
         self.best_val_loss = checkpoint["best_val_loss"]
 
+        # Restore batch_idx for deterministic resume (skip already processed batches)
+        self.resume_batch_idx = checkpoint.get("batch_idx", 0)
+
+        # Restore generator state for deterministic shuffle
+        generator_state = checkpoint.get("generator_state")
+        if generator_state is not None and hasattr(self.train_loader, 'shuffle_generator') and self.train_loader.shuffle_generator is not None:
+            self.train_loader.shuffle_generator.set_state(generator_state)
+            logger.info("Restored DataLoader shuffle generator state")
+
         # Truncate CSV to remove rows written after this checkpoint (preemption recovery)
         if resume_csv:
             self._truncate_csv_to_step(self.global_step)
 
-        logger.info(f"Checkpoint loaded: step={self.global_step}, epoch={self.epoch}, best_val_loss={self.best_val_loss:.4f}")
+        logger.info(f"Checkpoint loaded: step={self.global_step}, epoch={self.epoch}, batch_idx={self.resume_batch_idx}, best_val_loss={self.best_val_loss:.4f}")
