@@ -549,6 +549,21 @@ def parse_args():
             default=0.3,
             help="Maximum conditioning percentage for Mode 2 boundary evaluation"
         )
+        # Thinking tokens (latent computation prefix)
+        parser.add_argument(
+            "--use_thinking_tokens",
+            action="store_true",
+            help="Enable thinking tokens (learnable latent computation prefix)"
+        )
+        parser.add_argument(
+            "--thinking_token_mode",
+            type=str,
+            default="expectation",
+            choices=["expectation", "upper_bound"],
+            help="Mode for computing thinking token count: "
+                 "'expectation' (0.5 * cond_max * seq_len) or "
+                 "'upper_bound' (cond_max * seq_len)"
+        )
         parser.add_argument(
             "--streaming",
             action="store_true",

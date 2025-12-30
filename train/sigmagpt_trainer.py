@@ -99,12 +99,11 @@ class SigmaGPTTrainer(BaseTrainer):
         """
         Setup Sigma GPT model
 
-        Sigma GPT model does NOT require:
-        - TokenManager (no special tokens)
-        - Embedding resizing
-        - Pretrained weight loading (simplified for now)
+        Sigma GPT model may optionally use:
+        - TokenManager with thinking tokens (for latent computation)
+        - Embedding resizing (if thinking tokens are added)
 
-        This is simpler than conditional model setup.
+        Without thinking tokens, this is simpler than conditional model setup.
         """
         logger.info("Setting up Sigma GPT model...")
 
@@ -119,10 +118,41 @@ class SigmaGPTTrainer(BaseTrainer):
         self.config.position_encoding_type = position_encoding_type
         logger.info(f"Position encoding type: {self.config.position_encoding_type}")
 
-        # Simple tokenizer (no special tokens needed)
-        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        logger.info(f"Tokenizer initialized (vocab_size: {len(self.tokenizer)})")
+        # Check for thinking tokens
+        use_thinking_tokens = getattr(self.args, 'use_thinking_tokens', False)
+        thinking_token_mode = getattr(self.args, 'thinking_token_mode', 'expectation')
+        self.num_thinking_tokens = 0
+        thinking_token_ids = None
+
+        if use_thinking_tokens:
+            from model.thinking_tokens import compute_thinking_token_count
+            from model.token_manager import TokenManager
+
+            # Compute number of thinking tokens based on conditioning config
+            self.num_thinking_tokens = compute_thinking_token_count(
+                cond_pct_max=self.args.cond_pct_max,
+                max_seq_len=self.config.max_seq_len,
+                mode=thinking_token_mode
+            )
+            logger.info(f"Thinking tokens: {self.num_thinking_tokens} "
+                       f"(mode={thinking_token_mode}, cond_pct_max={self.args.cond_pct_max})")
+
+            # Create TokenManager with thinking tokens (no mask/BOS for SigmaGPT)
+            self.token_manager = TokenManager(
+                add_mask_token=False,
+                add_bos_token=False,
+                num_thinking_tokens=self.num_thinking_tokens
+            )
+            self.tokenizer = self.token_manager.get_tokenizer()
+            thinking_token_ids = self.token_manager.get_thinking_token_ids()
+            logger.info(f"TokenManager created with {len(thinking_token_ids)} thinking tokens "
+                       f"(IDs: {thinking_token_ids[0]}-{thinking_token_ids[-1]})")
+        else:
+            # Simple tokenizer (no special tokens needed)
+            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.token_manager = None
+            logger.info(f"Tokenizer initialized (vocab_size: {len(self.tokenizer)})")
 
         # Get architecture type (default to 'new' if not specified)
         self.sigmagpt_arch = getattr(self.args, 'sigmagpt_arch', 'new')
@@ -131,13 +161,25 @@ class SigmaGPTTrainer(BaseTrainer):
         # Initialize Sigma GPT model based on architecture choice
         if self.sigmagpt_arch == 'old':
             # Old architecture: double position encoding (paper's original)
+            # Note: Old architecture doesn't support thinking tokens
+            if use_thinking_tokens:
+                logger.warning("Thinking tokens not supported with old architecture, ignoring")
             self.model = SigmaGPTOld(self.config).to(self.device)
             logger.info(f"Sigma GPT OLD (double position encoding) initialized with {self.model.get_num_params() / 1e6:.2f}M parameters")
             logger.info(f"  Position embedding dim: n_embd // 2 = {self.config.n_embd // 2}")
         else:
             # New architecture: from baseline (standard position encoding)
-            self.model = SigmaGPTModel(self.config).to(self.device)
+            # Pass thinking token IDs if available
+            self.model = SigmaGPTModel(
+                self.config,
+                thinking_token_ids=thinking_token_ids
+            ).to(self.device)
             logger.info(f"Sigma GPT NEW (from baseline) initialized with {self.model.get_num_params() / 1e6:.2f}M parameters")
+
+        # Resize embeddings if we added thinking tokens
+        if use_thinking_tokens and self.token_manager is not None and self.sigmagpt_arch != 'old':
+            self.token_manager.resize_model_embeddings(self.model)
+            logger.info(f"Model embeddings resized for thinking tokens")
 
         # Store mode for logging
         self.sigmagpt_mode = self.args.sigmagpt_mode
@@ -445,18 +487,22 @@ class SigmaGPTTrainer(BaseTrainer):
 
     def _get_extra_csv_columns(self):
         """Add SigmaGPT-specific columns to CSV"""
-        return ["sigmagpt_mode", "ordering_mode"]
+        return ["sigmagpt_mode", "ordering_mode", "num_thinking_tokens", "thinking_token_mode"]
 
     def _get_extra_train_metrics(self):
         """Add SigmaGPT-specific training metrics"""
         return {
             'sigmagpt_mode': self.sigmagpt_mode,
-            'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal')
+            'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal'),
+            'num_thinking_tokens': getattr(self, 'num_thinking_tokens', 0),
+            'thinking_token_mode': getattr(self.args, 'thinking_token_mode', 'none')
         }
 
     def _get_extra_eval_metrics(self, eval_results):
         """Add SigmaGPT-specific evaluation metrics"""
         return {
             'sigmagpt_mode': self.sigmagpt_mode,
-            'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal')
+            'ordering_mode': getattr(self.args, 'ordering_mode', 'temporal'),
+            'num_thinking_tokens': getattr(self, 'num_thinking_tokens', 0),
+            'thinking_token_mode': getattr(self.args, 'thinking_token_mode', 'none')
         }

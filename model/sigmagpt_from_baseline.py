@@ -71,9 +71,12 @@ class MultiHeadAttention(nn.Module):
         self.position_encoding_type = getattr(config, 'position_encoding_type', 'learned')
         if self.position_encoding_type == "dual_rope":
             from model.rope import DualAxisRotaryEmbedding
+            # Use effective_max_position to accommodate thinking token position shifts
+            # This is set by SigmaGPTModel before building TransformerBlocks
+            effective_max_pos = getattr(config, 'effective_max_position', config.max_seq_len)
             self.rotary_emb = DualAxisRotaryEmbedding(
                 dim=self.head_dim,
-                max_seq_len=config.max_seq_len,
+                max_seq_len=effective_max_pos,
                 base_axis1=getattr(config, 'rope_base_axis1', 10000.0),
                 base_axis2=getattr(config, 'rope_base_axis2', 10000.0)
             )
@@ -198,9 +201,27 @@ class SigmaGPTModel(nn.Module):
         logits, loss = model(idx, order, targets)
     """
 
-    def __init__(self, config):
+    def __init__(self, config, thinking_token_ids=None):
+        """
+        Initialize SigmaGPT model.
+
+        Args:
+            config: GPT2Config with model hyperparameters
+            thinking_token_ids: Optional list of thinking token IDs for latent computation.
+                If provided, thinking tokens will be prepended to inputs in forward pass.
+        """
         super().__init__()
         self.config = config
+
+        # =======================================================================
+        # CRITICAL: Calculate effective_max_position BEFORE building layers
+        # When thinking tokens are present, positions can exceed max_seq_len.
+        # Body positions are shifted by n, so max position = n + seq_len - 1.
+        # We need to set this on config so TransformerBlocks can use it for RoPE.
+        # =======================================================================
+        self.num_thinking_tokens = len(thinking_token_ids) if thinking_token_ids else 0
+        self.effective_max_position = config.max_seq_len + self.num_thinking_tokens
+        config.effective_max_position = self.effective_max_position
 
         # Token embeddings (standard)
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
@@ -214,12 +235,12 @@ class SigmaGPTModel(nn.Module):
             self.wpe = None
         else:
             # Learned mode: CRITICAL - n_embd // 2 for double encoding
-            # This is the key architectural difference from standard GPT-2
-            self.wpe = nn.Embedding(config.max_seq_len, config.n_embd // 2)
+            # Use effective_max_position to accommodate thinking token shifts
+            self.wpe = nn.Embedding(self.effective_max_position, config.n_embd // 2)
 
         self.drop = nn.Dropout(config.dropout)
 
-        # Transformer blocks
+        # Transformer blocks (will use config.effective_max_position for RoPE)
         self.blocks = nn.ModuleList([
             TransformerBlock(config) for _ in range(config.n_layer)
         ])
@@ -230,6 +251,15 @@ class SigmaGPTModel(nn.Module):
         # Language model head (tied with token embeddings)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
+        # Thinking token prepender (optional)
+        self.thinking_prepender = None
+        if thinking_token_ids is not None and len(thinking_token_ids) > 0:
+            from model.thinking_tokens import ThinkingTokenPrepender
+            self.thinking_prepender = ThinkingTokenPrepender(
+                thinking_token_ids=thinking_token_ids,
+                n_embd=config.n_embd
+            )
+
         # Weight initialization
         self.apply(self._init_weights)
 
@@ -237,7 +267,10 @@ class SigmaGPTModel(nn.Module):
         self.lm_head.weight = self.wte.weight
 
         pos_enc_info = f"position_encoding={self.position_encoding_type}"
-        print(f"Sigma GPT Model (from baseline) initialized with {self.get_num_params()/1e6:.2f}M parameters, {pos_enc_info}")
+        thinking_info = ""
+        if self.num_thinking_tokens > 0:
+            thinking_info = f", thinking_tokens={self.num_thinking_tokens}, effective_max_pos={self.effective_max_position}"
+        print(f"Sigma GPT Model (from baseline) initialized with {self.get_num_params()/1e6:.2f}M parameters, {pos_enc_info}{thinking_info}")
 
     def _init_weights(self, module):
         """Initialize weights following GPT-2 paper"""
@@ -308,10 +341,10 @@ class SigmaGPTModel(nn.Module):
         # Concatenate to (B, T, 2)
         order_cat = torch.cat((order_input, order_target), dim=2)
 
-        # Clamp order values to valid position embedding range [0, max_seq_len-1]
-        # Order tensor uses seq_len as "end-of-sequence" marker, but embedding table
-        # only has indices [0, max_seq_len-1], so we need to clamp
-        order_cat = order_cat.clamp(max=self.config.max_seq_len - 1)
+        # Clamp order values to valid position embedding range
+        # Use effective_max_position to accommodate thinking token shifts
+        # wpe now has effective_max_position entries instead of just max_seq_len
+        order_cat = order_cat.clamp(max=self.effective_max_position - 1)
 
         # Embed: (B, T, 2) -> (B, T, 2, n_embd/2)
         pos_emb = self.wpe(order_cat)
@@ -343,6 +376,7 @@ class SigmaGPTModel(nn.Module):
 
         Returns:
             logits: (B, T, vocab_size) - predicted logits for each position
+                (or (B, n + T, vocab_size) if thinking tokens are enabled)
             loss: scalar loss (or None if targets not provided)
 
         Key Differences from Standard GPT-2:
@@ -350,9 +384,23 @@ class SigmaGPTModel(nn.Module):
             2. Position encoding is double encoding (current + next)
             3. Loss computation is direct (no shift needed)
             4. ignore_index is -1 (not -100)
+
+        With Thinking Tokens:
+            If thinking tokens are enabled, the inputs are transformed:
+            - idx: (B, T) -> (B, n + T) with thinking tokens prepended
+            - order: (B, T+1) -> (B, n + T + 1) with positions shifted
+            - targets: (B, T) -> (B, n + T) with -1 for thinking positions
         """
+        # Apply thinking token prepender if enabled
+        # This prepends thinking tokens and adjusts order/targets
+        if self.thinking_prepender is not None:
+            idx, order, targets = self.thinking_prepender(idx, order, targets)
+
         B, T = idx.size()
-        assert T <= self.config.max_seq_len, f"Sequence length {T} exceeds maximum {self.config.max_seq_len}"
+
+        # Max position for clamping: use effective_max_position which accounts for
+        # thinking token shifts. RoPE cache is now built with this extended range.
+        max_valid_pos = self.effective_max_position - 1
 
         # Token embeddings (standard)
         tok_emb = self.wte(idx)  # (B, T, n_embd)
@@ -366,9 +414,9 @@ class SigmaGPTModel(nn.Module):
             current_positions = order[:, :-1]  # (B, T) - current positions
             next_positions = order[:, 1:]      # (B, T) - next positions
 
-            # Clamp to valid range (order tensor may have seq_len as end marker)
-            current_positions = current_positions.clamp(max=self.config.max_seq_len - 1)
-            next_positions = next_positions.clamp(max=self.config.max_seq_len - 1)
+            # Clamp to valid range (RoPE cache has effective_max_position entries)
+            current_positions = current_positions.clamp(max=max_valid_pos)
+            next_positions = next_positions.clamp(max=max_valid_pos)
         else:
             # Learned mode: position embeddings (double encoding - Sigma GPT's key innovation)
             pos_emb = self._pos_emb(idx, order)  # (B, T, n_embd)
@@ -406,6 +454,9 @@ class SigmaGPTModel(nn.Module):
             #
             # Why no shift? Because input tokens and targets are already arranged
             # according to the generation order specified by the order tensor
+            #
+            # With Thinking Tokens:
+            #   targets for thinking positions are -1 (ignored in loss)
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 targets.view(-1),

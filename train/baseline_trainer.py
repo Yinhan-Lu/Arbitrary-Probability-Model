@@ -57,6 +57,13 @@ class BaselineTrainer(BaseTrainer):
             if self.config.gradient_checkpointing:
                 logger.info("Gradient checkpointing: ENABLED (memory optimization)")
 
+        # Set position encoding type from args (learned or rope)
+        if hasattr(self.args, 'position_encoding_type'):
+            self.config.position_encoding_type = self.args.position_encoding_type
+            logger.info(f"Position encoding type: {self.config.position_encoding_type}")
+        if hasattr(self.args, 'rope_base'):
+            self.config.rope_base = self.args.rope_base
+
         # Create standard model (no special tokens)
         self.model = GPT2Model(self.config).to(self.device)
 

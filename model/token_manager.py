@@ -4,6 +4,7 @@ Token Manager for Arbitrary Conditional Probability Model
 Manages special tokens needed for conditional modeling:
 - [M]: Mask token for unknown values
 - [BOS]: Beginning of sequence token (optional, can reuse EOS)
+- [think_1], [think_2], ..., [think_n]: Thinking tokens for SigmaGPT (optional)
 """
 
 import torch
@@ -22,9 +23,11 @@ class TokenManager:
     Special Tokens:
     - [M]: Mask token to replace unknown variables in input
     - [BOS]: Beginning of sequence (reuses EOS if not added separately)
+    - [think_1], ..., [think_n]: Thinking tokens for SigmaGPT latent computation
     """
 
-    def __init__(self, tokenizer=None, add_mask_token=True, add_bos_token=False):
+    def __init__(self, tokenizer=None, add_mask_token=True, add_bos_token=False,
+                 num_thinking_tokens=0):
         """
         Initialize token manager
 
@@ -32,6 +35,7 @@ class TokenManager:
             tokenizer: GPT2Tokenizer instance (will create if None)
             add_mask_token: Whether to add [M] token
             add_bos_token: Whether to add separate [BOS] token (else reuses EOS)
+            num_thinking_tokens: Number of thinking tokens to add (0 = disabled)
         """
         if tokenizer is None:
             logger.info("Loading GPT-2 tokenizer...")
@@ -49,6 +53,8 @@ class TokenManager:
         self.mask_token_id = None
         self.bos_token = None
         self.bos_token_id = None
+        self.thinking_tokens = []
+        self.thinking_token_ids = []
 
         # Add special tokens
         if add_mask_token:
@@ -61,11 +67,18 @@ class TokenManager:
             self.bos_token = tokenizer.eos_token
             self.bos_token_id = tokenizer.eos_token_id
 
+        # Add thinking tokens for SigmaGPT
+        if num_thinking_tokens > 0:
+            self._add_thinking_tokens(num_thinking_tokens)
+
         logger.info(f"TokenManager initialized:")
         logger.info(f"  Original vocab size: {self.original_vocab_size}")
         logger.info(f"  New vocab size: {len(self.tokenizer)}")
         logger.info(f"  Mask token: {self.mask_token} (ID: {self.mask_token_id})")
         logger.info(f"  BOS token: {self.bos_token} (ID: {self.bos_token_id})")
+        if self.thinking_token_ids:
+            logger.info(f"  Thinking tokens: {len(self.thinking_token_ids)} "
+                        f"(IDs: {self.thinking_token_ids[0]}-{self.thinking_token_ids[-1]})")
 
     def _add_mask_token(self):
         """Add [M] mask token to vocabulary"""
@@ -98,6 +111,43 @@ class TokenManager:
             logger.info(f"Added {num_added} new token(s): {bos_token} (ID: {self.bos_token_id})")
 
         self.bos_token = bos_token
+
+    def _add_thinking_tokens(self, num_tokens):
+        """
+        Add thinking tokens [think_1], [think_2], ..., [think_n] to vocabulary.
+
+        These are unique tokens used by SigmaGPT for latent computation
+        before generating the actual sequence.
+
+        Args:
+            num_tokens: Number of thinking tokens to add
+        """
+        # Create unique token names
+        thinking_tokens = [f"[think_{i+1}]" for i in range(num_tokens)]
+
+        # Add tokens to vocabulary
+        num_added = self.tokenizer.add_tokens(thinking_tokens)
+
+        # Get token IDs
+        self.thinking_tokens = thinking_tokens
+        self.thinking_token_ids = [
+            self.tokenizer.convert_tokens_to_ids(tok)
+            for tok in thinking_tokens
+        ]
+
+        logger.info(f"Added {num_added} thinking tokens: "
+                    f"[think_1] (ID: {self.thinking_token_ids[0]}) to "
+                    f"[think_{num_tokens}] (ID: {self.thinking_token_ids[-1]})")
+
+    def get_thinking_token_ids(self):
+        """
+        Get list of thinking token IDs in order.
+
+        Returns:
+            List of token IDs [think_1_id, think_2_id, ..., think_n_id]
+            Empty list if no thinking tokens were added.
+        """
+        return self.thinking_token_ids
 
     def resize_model_embeddings(self, model):
         """

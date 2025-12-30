@@ -483,6 +483,7 @@ def test_backward_compatibility():
             self.ffn_mult = 4
             self.mlp_hidden_size = 64 * 4
             self.activation_function = "gelu_new"
+            self.gradient_checkpointing = False  # Added for compatibility
             # Note: no position_encoding_type attribute!
 
     old_config = OldConfig()
