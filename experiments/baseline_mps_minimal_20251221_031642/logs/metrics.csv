@@ -1,0 +1,2 @@
+step,epoch,train_loss,train_perplexity,mode1_loss,mode1_ppl,mode2_loss,mode2_ppl,mode3_loss,mode3_ppl,mode4_loss,mode4_ppl,mode5_loss,mode5_ppl,learning_rate
+5,1,10.742122650146484,46264.1484375,,,,,,,,,,,5.500000000000001e-05
