@@ -59,11 +59,15 @@ class MultiHeadAttention(nn.Module):
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
 
-        # Causal mask (lower triangular)
+        # Use effective_max_position to accommodate thinking token position shifts
+        # This is set by SigmaGPTModel before building TransformerBlocks
+        effective_max_pos = getattr(config, 'effective_max_position', config.max_seq_len)
+
+        # Causal mask (lower triangular) - use effective_max_pos for thinking tokens
         self.register_buffer(
             "causal_mask",
-            torch.tril(torch.ones(config.max_seq_len, config.max_seq_len)).view(
-                1, 1, config.max_seq_len, config.max_seq_len
+            torch.tril(torch.ones(effective_max_pos, effective_max_pos)).view(
+                1, 1, effective_max_pos, effective_max_pos
             )
         )
 
@@ -71,9 +75,6 @@ class MultiHeadAttention(nn.Module):
         self.position_encoding_type = getattr(config, 'position_encoding_type', 'learned')
         if self.position_encoding_type == "dual_rope":
             from model.rope import DualAxisRotaryEmbedding
-            # Use effective_max_position to accommodate thinking token position shifts
-            # This is set by SigmaGPTModel before building TransformerBlocks
-            effective_max_pos = getattr(config, 'effective_max_position', config.max_seq_len)
             self.rotary_emb = DualAxisRotaryEmbedding(
                 dim=self.head_dim,
                 max_seq_len=effective_max_pos,

@@ -528,6 +528,84 @@ def test_position_encoding_learned_mode():
     print("  [PASS] Test 11 passed")
 
 
+def test_causal_mask_extended():
+    """Test 12: Verify causal mask is extended for thinking tokens"""
+    print("\n" + "=" * 60)
+    print("[Test 12] Causal mask extended for thinking tokens")
+    print("=" * 60)
+
+    from model.sigmagpt_from_baseline import SigmaGPTModel
+    from model.arbitrary_prob_gpt2 import GPT2Config
+    from model.token_manager import TokenManager
+
+    # Create config
+    max_seq_len = 64
+    config = GPT2Config(
+        vocab_size=50257,
+        n_layer=2,
+        n_head=4,
+        n_embd=128,
+        max_seq_len=max_seq_len,
+        dropout=0.0,
+        position_encoding_type='dual_rope'
+    )
+
+    # Without thinking tokens - causal mask should be max_seq_len x max_seq_len
+    model_no_think = SigmaGPTModel(config, thinking_token_ids=None)
+    causal_mask_no_think = model_no_think.blocks[0].attn.causal_mask
+    print(f"  Without thinking: causal_mask shape = {causal_mask_no_think.shape}")
+    assert causal_mask_no_think.shape == (1, 1, max_seq_len, max_seq_len), \
+        f"Expected (1, 1, {max_seq_len}, {max_seq_len}), got {causal_mask_no_think.shape}"
+
+    # With thinking tokens - causal mask should be (max_seq_len + n) x (max_seq_len + n)
+    num_thinking = 32
+    token_manager = TokenManager(
+        add_mask_token=False,
+        add_bos_token=False,
+        num_thinking_tokens=num_thinking
+    )
+    thinking_ids = token_manager.get_thinking_token_ids()
+
+    # Need to reset config for new model
+    config2 = GPT2Config(
+        vocab_size=50257,
+        n_layer=2,
+        n_head=4,
+        n_embd=128,
+        max_seq_len=max_seq_len,
+        dropout=0.0,
+        position_encoding_type='dual_rope'
+    )
+
+    model_with_think = SigmaGPTModel(config2, thinking_token_ids=thinking_ids)
+    token_manager.resize_model_embeddings(model_with_think)
+
+    causal_mask_with_think = model_with_think.blocks[0].attn.causal_mask
+    expected_size = max_seq_len + num_thinking
+    print(f"  With thinking: causal_mask shape = {causal_mask_with_think.shape}")
+    assert causal_mask_with_think.shape == (1, 1, expected_size, expected_size), \
+        f"Expected (1, 1, {expected_size}, {expected_size}), got {causal_mask_with_think.shape}"
+
+    # Verify full sequence forward pass works
+    B, T = 2, max_seq_len  # Full body sequence
+    inputs = torch.randint(0, 50257, (B, T))
+    order = torch.arange(T + 1).unsqueeze(0).expand(B, -1)
+    targets = torch.randint(0, 50257, (B, T))
+
+    try:
+        # After thinking prepender: seq_len = T + num_thinking = 64 + 32 = 96
+        logits, loss = model_with_think(idx=inputs, order=order, targets=targets)
+        print(f"  Forward pass with full sequence succeeded: logits shape = {logits.shape}")
+        # logits should be (B, T + num_thinking, vocab_size)
+        assert logits.shape[1] == T + num_thinking, \
+            f"Expected sequence length {T + num_thinking}, got {logits.shape[1]}"
+        assert not torch.isnan(loss), "Loss should not be NaN"
+    except RuntimeError as e:
+        raise AssertionError(f"Forward pass failed with RuntimeError: {e}")
+
+    print("  [PASS] Test 12 passed")
+
+
 def run_all_tests():
     """Run all thinking token tests"""
     print("\n" + "=" * 60)
@@ -546,6 +624,7 @@ def run_all_tests():
         ("Loss excludes thinking positions", test_loss_excludes_thinking),
         ("Position encoding extended range (RoPE)", test_position_encoding_range),
         ("Position encoding extended range (learned)", test_position_encoding_learned_mode),
+        ("Causal mask extended", test_causal_mask_extended),
     ]
 
     passed = 0
