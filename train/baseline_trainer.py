@@ -51,6 +51,12 @@ class BaselineTrainer(BaseTrainer):
         # Get model configuration
         self.config = get_config(self.args.model_config)
 
+        # Set gradient checkpointing from args
+        if hasattr(self.args, 'gradient_checkpointing'):
+            self.config.gradient_checkpointing = self.args.gradient_checkpointing
+            if self.config.gradient_checkpointing:
+                logger.info("Gradient checkpointing: ENABLED (memory optimization)")
+
         # Create standard model (no special tokens)
         self.model = GPT2Model(self.config).to(self.device)
 

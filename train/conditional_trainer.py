@@ -77,6 +77,12 @@ class ConditionalTrainer(BaseTrainer):
         if hasattr(self.args, 'rope_base'):
             self.config.rope_base = self.args.rope_base
 
+        # Set gradient checkpointing from args
+        if hasattr(self.args, 'gradient_checkpointing'):
+            self.config.gradient_checkpointing = self.args.gradient_checkpointing
+            if self.config.gradient_checkpointing:
+                logger.info("Gradient checkpointing: ENABLED (memory optimization)")
+
         # Initialize token manager with special tokens
         self.token_manager = TokenManager(
             add_mask_token=True,

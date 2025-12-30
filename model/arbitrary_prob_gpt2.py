@@ -7,6 +7,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as gradient_checkpoint
 
 
 class GPT2Config:
@@ -26,6 +27,7 @@ class GPT2Config:
         detach_augmentation=False,
         position_encoding_type="learned",  # "learned" or "rope"
         rope_base=10000.0,  # RoPE base frequency
+        gradient_checkpointing=False,  # Enable gradient checkpointing for memory savings
         **kwargs
     ):
         self.vocab_size = vocab_size
@@ -41,6 +43,7 @@ class GPT2Config:
         self.detach_augmentation = detach_augmentation
         self.position_encoding_type = position_encoding_type
         self.rope_base = rope_base
+        self.gradient_checkpointing = gradient_checkpointing
 
 
 class NewGELU(nn.Module):
@@ -677,7 +680,18 @@ class GPT2Model(nn.Module):
 
         # Apply transformer blocks
         for block in self.blocks:
-            x = block(x, attention_mask=attention_mask, position_ids=rope_position_ids)
+            if self.config.gradient_checkpointing and self.training:
+                # Use gradient checkpointing to reduce memory usage
+                # Trade compute for memory: recompute activations during backward pass
+                x = gradient_checkpoint(
+                    block,
+                    x,
+                    attention_mask,
+                    rope_position_ids,
+                    use_reentrant=False
+                )
+            else:
+                x = block(x, attention_mask=attention_mask, position_ids=rope_position_ids)
 
         # Final layer norm
         x = self.ln_f(x)

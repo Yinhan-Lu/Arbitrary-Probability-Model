@@ -207,79 +207,185 @@ echo "PyTorch: \$(python3 -c 'import torch; print(torch.__version__)')"
 echo "========================================="
 
 # =========================================================================
-# AUTO-RESUME LOGIC: Check for existing experiment and checkpoint
+# AUTO-RETRY OOM HANDLING
 # =========================================================================
-# Initialize EXP_NAME with default value (may be overridden if resuming)
+# Retry configuration ladder (maintains effective_batch=128)
+# Format: "batch_size gradient_accumulation use_checkpointing"
+declare -a BATCH_SIZES=(8 4 2 1 1)
+declare -a GRAD_ACCUMS=(16 32 64 128 128)
+declare -a USE_CKPT=("false" "false" "false" "false" "true")
+MAX_RETRIES=5
+
+# Initialize EXP_NAME with default value
 EXP_NAME="${EXP_NAME}"
 
-# Look for existing experiment folder matching this config (ignoring timestamp)
-# Use config variables directly to match any timestamp
+# Experiment pattern for finding existing experiments
 EXP_PATTERN="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_*"
-EXISTING_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
-RESUME_ARG=""
 
-if [ -n "\$EXISTING_EXP" ] && [ -d "\$EXISTING_EXP/checkpoints" ]; then
-    # Find latest checkpoint (by step number, not modification time)
-    LATEST_CKPT=\$(ls -v "\$EXISTING_EXP/checkpoints/checkpoint_step_"*.pt 2>/dev/null | tail -1)
+# =========================================================================
+# RETRY LOOP
+# =========================================================================
+for attempt in \$(seq 0 \$((MAX_RETRIES-1))); do
+    CURR_BATCH=\${BATCH_SIZES[\$attempt]}
+    CURR_GRAD_ACCUM=\${GRAD_ACCUMS[\$attempt]}
+    CURR_CKPT=\${USE_CKPT[\$attempt]}
 
-    if [ -n "\$LATEST_CKPT" ]; then
-        echo "========================================="
-        echo "RESUMING FROM CHECKPOINT"
-        echo "  Experiment: \$EXISTING_EXP"
-        echo "  Checkpoint: \$LATEST_CKPT"
-        echo "========================================="
-        RESUME_ARG="--resume_from \$LATEST_CKPT"
-        # Note: EXP_NAME not needed - trainer auto-detects exp_dir from checkpoint path
+    echo "========================================="
+    echo "TRAINING ATTEMPT \$((attempt+1))/$MAX_RETRIES"
+    echo "  batch_size: \$CURR_BATCH"
+    echo "  gradient_accumulation: \$CURR_GRAD_ACCUM"
+    echo "  gradient_checkpointing: \$CURR_CKPT"
+    echo "  effective_batch_size: \$((CURR_BATCH * CURR_GRAD_ACCUM))"
+    echo "========================================="
+
+    # Build extra arguments
+    EXTRA_ARGS=""
+    if [ "\$CURR_CKPT" == "true" ]; then
+        EXTRA_ARGS="--gradient_checkpointing"
     fi
+
+    # Check for existing experiment and checkpoint (for resume)
+    EXISTING_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
+    RESUME_ARG=""
+
+    if [ -n "\$EXISTING_EXP" ] && [ -d "\$EXISTING_EXP/checkpoints" ]; then
+        # Find latest checkpoint (by step number, not modification time)
+        LATEST_CKPT=\$(ls -v "\$EXISTING_EXP/checkpoints/checkpoint_step_"*.pt 2>/dev/null | tail -1)
+
+        if [ -n "\$LATEST_CKPT" ]; then
+            echo "========================================="
+            echo "RESUMING FROM CHECKPOINT"
+            echo "  Experiment: \$EXISTING_EXP"
+            echo "  Checkpoint: \$LATEST_CKPT"
+            echo "========================================="
+            RESUME_ARG="--resume_from \$LATEST_CKPT"
+        fi
+    fi
+
+    # Run training
+    python3 ./train.py \\
+        --model_type conditional \\
+        --model_config ${MODEL_CONFIG} \\
+        --position_encoding_type rope \\
+        --num_epochs ${NUM_EPOCHS} \\
+        --batch_size \$CURR_BATCH \\
+        --eval_batch_size 16 \\
+        --gradient_accumulation_steps \$CURR_GRAD_ACCUM \\
+        --num_train_samples ${NUM_SAMPLES} \\
+        --num_eval_samples ${EVAL_SAMPLES} \\
+        --learning_rate ${LEARNING_RATE} \\
+        --warmup_steps ${WARMUP_STEPS} \\
+        --max_grad_norm 1.0 \\
+        --weight_decay ${WEIGHT_DECAY} \\
+        --adam_beta1 0.9 \\
+        --adam_beta2 0.999 \\
+        --adam_epsilon 1e-8 \\
+        --cond_pct_min 0.0 \\
+        --cond_pct_max ${COND_MAX} \\
+        --eval_pct_min 1.0 \\
+        --eval_pct_max 1.0 \\
+        --conditioning_sampling blockwise \\
+        --evaluation_sampling blockwise \\
+        --min_conditioning 0 \\
+        --min_evaluation 1 \\
+        --mode2_boundary_cond_pct_min ${MODE2_MIN} \\
+        --mode2_boundary_cond_pct_max ${MODE2_MAX} \\
+        --use_attention_mask_for_valid \\
+        --logging_steps 10 \\
+        --eval_steps 100 \\
+        --save_steps 1000 \\
+        --early_stopping_patience 0 \\
+        --do_eval \\
+        --max_eval_batches 10 \\
+        --output_dir ./experiments \\
+        --exp_name \${EXP_NAME} \\
+        --device cuda \\
+        --num_workers 4 \\
+        \$EXTRA_ARGS \\
+        \$RESUME_ARG
+
+    EXIT_CODE=\$?
+
+    echo "========================================="
+    echo "Attempt \$((attempt+1)) completed"
+    echo "Exit code: \$EXIT_CODE"
+    echo "Duration: \$SECONDS seconds (~\$((SECONDS / 60)) minutes)"
+    echo "========================================="
+
+    # Check if training succeeded
+    if [ \$EXIT_CODE -eq 0 ]; then
+        echo "SUCCESS on attempt \$((attempt+1))"
+
+        # Save working configuration
+        LATEST_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
+        if [ -n "\$LATEST_EXP" ]; then
+            cat > "\$LATEST_EXP/working_config.json" << CFGEOF
+{
+    "batch_size": \$CURR_BATCH,
+    "gradient_accumulation_steps": \$CURR_GRAD_ACCUM,
+    "gradient_checkpointing": \$CURR_CKPT,
+    "attempt": \$((attempt+1)),
+    "effective_batch_size": \$((CURR_BATCH * CURR_GRAD_ACCUM)),
+    "max_retries": $MAX_RETRIES
+}
+CFGEOF
+            echo "Working config saved to: \$LATEST_EXP/working_config.json"
+        fi
+        break
+    fi
+
+    # Check if it was OOM error
+    SLURM_ERR="logs/cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_\${SLURM_JOB_ID}.err"
+    OOM_DETECTED=false
+
+    if [ -f "\$SLURM_ERR" ] && grep -q "CUDA out of memory" "\$SLURM_ERR" 2>/dev/null; then
+        OOM_DETECTED=true
+    fi
+
+    # Also check metrics.csv for early failure (1-2 lines = immediate crash)
+    LATEST_EXP=\$(ls -dt ./experiments/\${EXP_PATTERN} 2>/dev/null | head -1)
+    if [ -n "\$LATEST_EXP" ] && [ -f "\$LATEST_EXP/logs/metrics.csv" ]; then
+        METRICS_LINES=\$(wc -l < "\$LATEST_EXP/logs/metrics.csv")
+        if [ \$METRICS_LINES -le 2 ]; then
+            # Very few lines suggests early crash (likely OOM)
+            OOM_DETECTED=true
+        fi
+    fi
+
+    if [ "\$OOM_DETECTED" == "true" ]; then
+        echo "========================================="
+        echo "OOM DETECTED - Retrying with smaller batch size"
+        echo "========================================="
+
+        # Clear failed experiment artifacts before retry
+        if [ -n "\$LATEST_EXP" ]; then
+            echo "Cleaning up failed experiment artifacts..."
+            rm -rf "\$LATEST_EXP/checkpoints"/* 2>/dev/null || true
+
+            # Reset metrics.csv to header only
+            if [ -f "\$LATEST_EXP/logs/metrics.csv" ]; then
+                head -1 "\$LATEST_EXP/logs/metrics.csv" > "\$LATEST_EXP/logs/metrics.csv.tmp" 2>/dev/null
+                mv "\$LATEST_EXP/logs/metrics.csv.tmp" "\$LATEST_EXP/logs/metrics.csv" 2>/dev/null || true
+            fi
+            echo "Cleanup complete"
+        fi
+        continue
+    else
+        echo "========================================="
+        echo "NON-OOM ERROR DETECTED - Not retrying"
+        echo "========================================="
+        exit \$EXIT_CODE
+    fi
+done
+
+# Check if all retries failed
+if [ \$EXIT_CODE -ne 0 ]; then
+    echo "========================================="
+    echo "FAILED after $MAX_RETRIES attempts"
+    echo "========================================="
+    exit 1
 fi
 
-# Run training
-python3 ./train.py \\
-    --model_type conditional \\
-    --model_config ${MODEL_CONFIG} \\
-    --position_encoding_type rope \\
-    --num_epochs ${NUM_EPOCHS} \\
-    --batch_size ${BATCH_SIZE} \\
-    --eval_batch_size 16 \\
-    --gradient_accumulation_steps ${GRAD_ACCUM} \\
-    --num_train_samples ${NUM_SAMPLES} \\
-    --num_eval_samples ${EVAL_SAMPLES} \\
-    --learning_rate ${LEARNING_RATE} \\
-    --warmup_steps ${WARMUP_STEPS} \\
-    --max_grad_norm 1.0 \\
-    --weight_decay ${WEIGHT_DECAY} \\
-    --adam_beta1 0.9 \\
-    --adam_beta2 0.999 \\
-    --adam_epsilon 1e-8 \\
-    --cond_pct_min 0.0 \\
-    --cond_pct_max ${COND_MAX} \\
-    --eval_pct_min 1.0 \\
-    --eval_pct_max 1.0 \\
-    --conditioning_sampling blockwise \\
-    --evaluation_sampling blockwise \\
-    --min_conditioning 0 \\
-    --min_evaluation 1 \\
-    --mode2_boundary_cond_pct_min ${MODE2_MIN} \\
-    --mode2_boundary_cond_pct_max ${MODE2_MAX} \\
-    --use_attention_mask_for_valid \\
-    --logging_steps 10 \\
-    --eval_steps 100 \\
-    --save_steps 1000 \\
-    --early_stopping_patience 0 \\
-    --do_eval \\
-    --max_eval_batches 10 \\
-    --output_dir ./experiments \\
-    --exp_name \${EXP_NAME} \\
-    --device cuda \\
-    --num_workers 4 \\
-    \$RESUME_ARG
-
-EXIT_CODE=\$?
-
-echo "========================================="
-echo "Training Completed"
-echo "Exit code: \$EXIT_CODE"
-echo "Duration: \$SECONDS seconds (~\$((SECONDS / 60)) minutes)"
 echo "========================================="
 
 # Auto-generate visualization plots

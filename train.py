@@ -169,6 +169,11 @@ def parse_args():
         default=16,
         help="Gradient accumulation steps"
     )
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Enable gradient checkpointing to reduce GPU memory usage (trades compute for memory)"
+    )
 
     # Optimizer arguments
     parser.add_argument(
