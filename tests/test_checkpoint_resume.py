@@ -1,296 +1,264 @@
+#!/usr/bin/env python3
 """
-Test checkpoint resume functionality for preemption recovery
+Quick test for checkpoint resume functionality.
 
-Tests:
-1. CSV truncation - _truncate_csv_to_step() removes rows with step > target
-2. CSV append mode - _init_csv_logger(append=True) preserves existing CSV
-3. Integration test - Full save → dirty rows → resume flow
-4. Pattern matching - Experiment folder pattern works across timestamps
+This test verifies:
+1. Training starts and saves checkpoints
+2. metrics.csv is NOT cleared when resuming
+3. Training continues in the SAME folder
+4. Step counter continues correctly
 
-Run from project root: python tests/test_checkpoint_resume.py
+Run from project root:
+    python tests/test_checkpoint_resume.py
+
+Expected time: ~60 seconds
 """
 
 import sys
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
-import csv
-import tempfile
-import shutil
-import fnmatch
 
-print("=" * 80)
-print("Testing Checkpoint Resume System")
-print("=" * 80)
+def run_command(cmd, description):
+    """Run a command and return output"""
+    print(f"\n{'='*60}")
+    print(f"[STEP] {description}")
+    print(f"{'='*60}")
+    print(f"Command: {' '.join(cmd[:10])}...")
+    print()
 
-# =========================================================================
-# Test 1: CSV Truncation
-# =========================================================================
-print("\n[Test 1] CSV Truncation (_truncate_csv_to_step)")
-print("-" * 40)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).parent.parent)
+    )
 
-# Create a temporary directory for testing
-test_dir = tempfile.mkdtemp(prefix="test_resume_")
-csv_path = Path(test_dir) / "metrics.csv"
+    if result.returncode != 0:
+        print(f"STDOUT:\n{result.stdout[-2000:]}")
+        print(f"STDERR:\n{result.stderr[-2000:]}")
+        raise RuntimeError(f"Command failed with code {result.returncode}")
 
-# Create CSV with steps [100, 200, 300, 400, 500]
-fieldnames = ["step", "epoch", "train_loss", "train_perplexity"]
-rows = [
-    {"step": 100, "epoch": 0, "train_loss": 2.5, "train_perplexity": 12.0},
-    {"step": 200, "epoch": 0, "train_loss": 2.3, "train_perplexity": 10.0},
-    {"step": 300, "epoch": 1, "train_loss": 2.1, "train_perplexity": 8.0},
-    {"step": 400, "epoch": 1, "train_loss": 1.9, "train_perplexity": 6.7},
-    {"step": 500, "epoch": 2, "train_loss": 1.7, "train_perplexity": 5.5},
-]
+    return result.stdout
 
-with open(csv_path, 'w', newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(rows)
 
-print(f"  Created CSV with {len(rows)} rows (steps: 100, 200, 300, 400, 500)")
+def count_csv_lines(csv_path):
+    """Count non-header lines in CSV"""
+    if not csv_path.exists():
+        return 0
+    with open(csv_path) as f:
+        lines = f.readlines()
+    return max(0, len(lines) - 1)
 
-# Simulate the truncation logic (same as base_trainer._truncate_csv_to_step)
-target_step = 300
-rows_to_keep = []
 
-with open(csv_path, 'r', newline='') as f:
-    reader = csv.DictReader(f)
-    csv_fieldnames = reader.fieldnames
-    for row in reader:
-        step = int(row.get('step', 0))
-        if step <= target_step:
-            rows_to_keep.append(row)
+def get_last_step(csv_path):
+    """Get the last step number from CSV"""
+    if not csv_path.exists():
+        return -1
+    with open(csv_path) as f:
+        lines = f.readlines()
+    if len(lines) < 2:
+        return -1
+    last_line = lines[-1].strip()
+    if not last_line:
+        last_line = lines[-2].strip()
+    try:
+        return int(last_line.split(',')[0])
+    except:
+        return -1
 
-with open(csv_path, 'w', newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=csv_fieldnames)
-    writer.writeheader()
-    writer.writerows(rows_to_keep)
 
-# Verify results
-with open(csv_path, 'r', newline='') as f:
-    reader = csv.DictReader(f)
-    remaining_rows = list(reader)
-    remaining_steps = [int(r['step']) for r in remaining_rows]
+def main():
+    print("\n" + "="*60)
+    print("CHECKPOINT RESUME TEST")
+    print("="*60)
+    print("This test verifies that checkpoint resume works correctly")
+    print("and that metrics.csv is NOT cleared when resuming.\n")
 
-print(f"  Truncated to step <= {target_step}")
-print(f"  Remaining rows: {len(remaining_rows)}")
-print(f"  Remaining steps: {remaining_steps}")
+    # Test parameters - use a fixed name without timestamp
+    exp_name = "test_checkpoint_resume_20991231_235959"
+    exp_dir = Path("experiments") / exp_name
+    logs_dir = exp_dir / "logs"
+    ckpt_dir = exp_dir / "checkpoints"
+    csv_path = logs_dir / "metrics.csv"
 
-assert len(remaining_rows) == 3, f"Expected 3 rows, got {len(remaining_rows)}"
-assert remaining_steps == [100, 200, 300], f"Expected [100, 200, 300], got {remaining_steps}"
-print("✓ Test 1 passed: CSV truncation works correctly")
+    # Clean up any previous test
+    if exp_dir.exists():
+        print(f"Cleaning up previous test directory: {exp_dir}")
+        shutil.rmtree(exp_dir)
 
-# =========================================================================
-# Test 2: CSV Append Mode
-# =========================================================================
-print("\n[Test 2] CSV Append Mode (_init_csv_logger with append=True)")
-print("-" * 40)
+    # =========================================================================
+    # PHASE 1: Initial training (save checkpoint at step 50)
+    # =========================================================================
+    print("\n" + "="*60)
+    print("PHASE 1: Initial Training")
+    print("="*60)
 
-# Create CSV with 3 rows
-csv_path2 = Path(test_dir) / "metrics2.csv"
-original_rows = [
-    {"step": 100, "epoch": 0, "train_loss": 2.5, "train_perplexity": 12.0},
-    {"step": 200, "epoch": 0, "train_loss": 2.3, "train_perplexity": 10.0},
-    {"step": 300, "epoch": 1, "train_loss": 2.1, "train_perplexity": 8.0},
-]
+    # Use very few samples to make training quick
+    # Phase 1: train with 64 samples, batch_size=4, grad_accum=2 = 8 steps
+    # save_steps=5 will save checkpoint at step 5
+    cmd_phase1 = [
+        "python", "train.py",
+        "--model_type", "sigmagpt",
+        "--model_config", "tiny",
+        "--position_encoding_type", "rope",
+        "--num_epochs", "1",
+        "--batch_size", "4",
+        "--gradient_accumulation_steps", "2",
+        "--num_train_samples", "64",
+        "--num_eval_samples", "16",
+        "--logging_steps", "2",
+        "--eval_steps", "1000",
+        "--save_steps", "5",
+        "--output_dir", "./experiments",
+        "--exp_name", exp_name,
+        "--device", "cpu",
+        "--num_workers", "0",
+    ]
 
-with open(csv_path2, 'w', newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(original_rows)
+    run_command(cmd_phase1, "Running initial training")
 
-print(f"  Created CSV with {len(original_rows)} rows")
+    # Verify experiment directory exists
+    if not exp_dir.exists():
+        raise RuntimeError(f"Experiment directory not created: {exp_dir}")
 
-# Simulate _init_csv_logger(append=True) - should NOT overwrite
-append = True
-if append and csv_path2.exists():
-    # Append mode: don't overwrite
-    print("  Called _init_csv_logger(append=True) - should preserve CSV")
-else:
-    # Would overwrite
-    with open(csv_path2, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
+    print(f"\nExperiment directory: {exp_dir}")
 
-# Verify CSV still has original data
-with open(csv_path2, 'r', newline='') as f:
-    reader = csv.DictReader(f)
-    after_rows = list(reader)
-
-print(f"  Rows after append mode init: {len(after_rows)}")
-assert len(after_rows) == 3, f"Expected 3 rows (unchanged), got {len(after_rows)}"
-print("✓ Test 2 passed: Append mode preserves existing CSV")
-
-# =========================================================================
-# Test 3: Integration Test (Preemption Recovery Simulation)
-# =========================================================================
-print("\n[Test 3] Integration Test (Preemption Recovery Simulation)")
-print("-" * 40)
-
-# Simulate:
-# 1. Training progresses to step 500
-# 2. Checkpoint saved at step 300
-# 3. Process killed after writing steps 400, 500 to CSV
-# 4. Resume from checkpoint at step 300
-# 5. Verify CSV is truncated and training would resume from step 300
-
-csv_path3 = Path(test_dir) / "metrics3.csv"
-checkpoint_path = Path(test_dir) / "checkpoint.pt"
-
-# Step 1-3: Create CSV with all 5 steps (simulating steps written before kill)
-all_rows = [
-    {"step": 100, "epoch": 0, "train_loss": 2.5, "train_perplexity": 12.0},
-    {"step": 200, "epoch": 0, "train_loss": 2.3, "train_perplexity": 10.0},
-    {"step": 300, "epoch": 1, "train_loss": 2.1, "train_perplexity": 8.0},
-    {"step": 400, "epoch": 1, "train_loss": 1.9, "train_perplexity": 6.7},  # "dirty"
-    {"step": 500, "epoch": 2, "train_loss": 1.7, "train_perplexity": 5.5},  # "dirty"
-]
-
-with open(csv_path3, 'w', newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(all_rows)
-
-print("  Simulated scenario:")
-print("    - CSV has steps: 100, 200, 300, 400, 500")
-print("    - Checkpoint saved at step 300, epoch 1")
-print("    - Steps 400, 500 are 'dirty' (written after checkpoint)")
-
-# Simulate checkpoint (what would be saved)
-checkpoint_global_step = 300
-checkpoint_epoch = 1
-
-# Step 4: Resume - truncate CSV
-class MockCSVLogger:
-    def __init__(self, csv_file):
-        self.csv_log_file = csv_file
-
-    def _truncate_csv_to_step(self, target_step):
-        if not self.csv_log_file.exists():
-            return
-
-        rows_to_keep = []
-        with open(self.csv_log_file, 'r', newline='') as f:
-            reader = csv.DictReader(f)
-            csv_fieldnames = reader.fieldnames
-            for row in reader:
-                step = int(row.get('step', 0))
-                if step <= target_step:
-                    rows_to_keep.append(row)
-
-        with open(self.csv_log_file, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=csv_fieldnames)
-            writer.writeheader()
-            writer.writerows(rows_to_keep)
-
-mock_logger = MockCSVLogger(csv_path3)
-mock_logger._truncate_csv_to_step(checkpoint_global_step)
-
-# Step 5: Verify
-with open(csv_path3, 'r', newline='') as f:
-    reader = csv.DictReader(f)
-    final_rows = list(reader)
-    final_steps = [int(r['step']) for r in final_rows]
-
-print(f"\n  After resume from checkpoint (step {checkpoint_global_step}):")
-print(f"    - CSV rows: {len(final_rows)}")
-print(f"    - Steps: {final_steps}")
-print(f"    - Training would resume from epoch {checkpoint_epoch + 1}")
-
-assert len(final_rows) == 3, f"Expected 3 rows, got {len(final_rows)}"
-assert final_steps == [100, 200, 300], f"Expected [100, 200, 300], got {final_steps}"
-assert 400 not in final_steps, "Step 400 should have been removed"
-assert 500 not in final_steps, "Step 500 should have been removed"
-print("✓ Test 3 passed: Preemption recovery correctly truncates CSV")
-
-# =========================================================================
-# Test 4: Pattern Matching (Experiment Folder Detection)
-# =========================================================================
-print("\n[Test 4] Pattern Matching (Experiment Folder Detection)")
-print("-" * 40)
-
-# Test the pattern: cond0-40_max_block_rope_gpt2_conditional_*
-# Should match any timestamp
-pattern = "cond0-40_max_block_rope_gpt2_conditional_*"
-
-test_folders = [
-    # Should match
-    ("cond0-40_max_block_rope_gpt2_conditional_20251227_143052", True),
-    ("cond0-40_max_block_rope_gpt2_conditional_20251228_093000", True),
-    ("cond0-40_max_block_rope_gpt2_conditional_20260101_000000", True),
-    # Should NOT match (different cond percentage)
-    ("cond0-60_max_block_rope_gpt2_conditional_20251227_143052", False),
-    ("cond0-20_max_block_rope_gpt2_conditional_20251227_143052", False),
-    # Should NOT match (different model)
-    ("cond0-40_max_block_rope_distilgpt2_conditional_20251227_143052", False),
-    ("cond0-40_max_block_rope_gpt2_medium_conditional_20251227_143052", False),
-]
-
-print(f"  Pattern: {pattern}")
-print()
-
-all_passed = True
-for folder_name, should_match in test_folders:
-    matches = fnmatch.fnmatch(folder_name, pattern)
-    status = "✓" if matches == should_match else "✗"
-    expected = "match" if should_match else "no match"
-    actual = "matched" if matches else "no match"
-
-    if matches != should_match:
-        all_passed = False
-        print(f"  {status} {folder_name}")
-        print(f"      Expected: {expected}, Got: {actual}")
+    # Verify checkpoint exists (either step checkpoint or final model)
+    checkpoints = list(ckpt_dir.glob("checkpoint_step_*.pt"))
+    if checkpoints:
+        latest_ckpt = sorted(checkpoints)[-1]
     else:
-        print(f"  {status} {folder_name} ({actual})")
+        # Fall back to final_model.pt
+        final_ckpt = ckpt_dir / "final_model.pt"
+        if final_ckpt.exists():
+            latest_ckpt = final_ckpt
+        else:
+            raise RuntimeError("No checkpoint found after Phase 1!")
 
-assert all_passed, "Some pattern matching tests failed"
-print("\n✓ Test 4 passed: Pattern matching works correctly")
+    print(f"Checkpoint saved: {latest_ckpt.name}")
 
-# =========================================================================
-# Test 5: Verify old buggy pattern would fail
-# =========================================================================
-print("\n[Test 5] Verify Old Buggy Pattern Would Fail")
-print("-" * 40)
+    # Record metrics before resume
+    lines_before = count_csv_lines(csv_path)
+    last_step_before = get_last_step(csv_path)
+    print(f"metrics.csv lines (before resume): {lines_before}")
+    print(f"Last step (before resume): {last_step_before}")
 
-# The old buggy pattern was: ${EXP_NAME%_*}_*
-# This only removes ONE underscore segment (the time), not both (date and time)
+    if lines_before == 0:
+        raise RuntimeError("metrics.csv is empty after Phase 1!")
 
-# Simulate what happens when job restarts on a different day
-original_exp = "cond0-40_max_block_rope_gpt2_conditional_20251227_143052"
-new_timestamp_exp = "cond0-40_max_block_rope_gpt2_conditional_20251228_093000"
+    # Save a copy of metrics.csv for comparison
+    csv_backup = logs_dir / "metrics_backup.csv"
+    shutil.copy(csv_path, csv_backup)
 
-# Simulate ${EXP_NAME%_*}_* (remove last underscore segment)
-new_exp_without_time = "_".join(new_timestamp_exp.rsplit("_", 1)[:-1])
-buggy_pattern = new_exp_without_time + "_*"
+    # =========================================================================
+    # PHASE 2: Resume training (run another epoch)
+    # =========================================================================
+    print("\n" + "="*60)
+    print("PHASE 2: Resume Training")
+    print("="*60)
 
-print(f"  Original experiment: {original_exp}")
-print(f"  New timestamp (after restart): {new_timestamp_exp}")
-print(f"  Buggy pattern: {buggy_pattern}")
+    # Phase 2: resume and train another epoch
+    cmd_phase2 = [
+        "python", "train.py",
+        "--model_type", "sigmagpt",
+        "--model_config", "tiny",
+        "--position_encoding_type", "rope",
+        "--num_epochs", "2",  # Train 2 epochs total (resume from epoch 1)
+        "--batch_size", "4",
+        "--gradient_accumulation_steps", "2",
+        "--num_train_samples", "64",
+        "--num_eval_samples", "16",
+        "--logging_steps", "2",
+        "--eval_steps", "1000",
+        "--save_steps", "5",
+        "--output_dir", "./experiments",
+        "--exp_name", exp_name,  # Same exp_name!
+        "--device", "cpu",
+        "--num_workers", "0",
+        "--resume_from", str(latest_ckpt),
+    ]
 
-# The buggy pattern would be: cond0-40_max_block_rope_gpt2_conditional_20251228_*
-# This would NOT match the original: cond0-40_max_block_rope_gpt2_conditional_20251227_143052
-buggy_matches = fnmatch.fnmatch(original_exp, buggy_pattern)
-print(f"  Buggy pattern matches original? {buggy_matches}")
+    run_command(cmd_phase2, "Resuming training from checkpoint")
 
-assert not buggy_matches, "Buggy pattern should NOT match (this is the bug we fixed!)"
-print("✓ Test 5 passed: Confirmed old buggy pattern would fail")
+    # =========================================================================
+    # VERIFICATION
+    # =========================================================================
+    print("\n" + "="*60)
+    print("VERIFICATION")
+    print("="*60)
 
-# Show what the correct pattern should be
-correct_pattern = "cond0-40_max_block_rope_gpt2_conditional_*"
-correct_matches = fnmatch.fnmatch(original_exp, correct_pattern)
-print(f"\n  Correct pattern: {correct_pattern}")
-print(f"  Correct pattern matches original? {correct_matches}")
-assert correct_matches, "Correct pattern should match"
+    # Check metrics.csv
+    lines_after = count_csv_lines(csv_path)
+    last_step_after = get_last_step(csv_path)
 
-# =========================================================================
-# Cleanup
-# =========================================================================
-print("\n" + "-" * 40)
-shutil.rmtree(test_dir)
-print(f"✓ Cleaned up test directory: {test_dir}")
+    print(f"\nmetrics.csv lines (after resume): {lines_after}")
+    print(f"Last step (after resume): {last_step_after}")
 
-print("\n" + "=" * 80)
-print("✓ All checkpoint resume tests passed!")
-print("=" * 80)
+    # Test 1: Lines were added, not replaced
+    if lines_after <= lines_before:
+        print("\n[FAIL] metrics.csv was cleared or not appended!")
+        print(f"  Before: {lines_before} lines")
+        print(f"  After:  {lines_after} lines")
+        return False
+    print(f"[PASS] metrics.csv grew from {lines_before} to {lines_after} lines")
+
+    # Test 2: Step counter continued
+    if last_step_after <= last_step_before:
+        print("\n[FAIL] Step counter did not continue!")
+        print(f"  Before: step {last_step_before}")
+        print(f"  After:  step {last_step_after}")
+        return False
+    print(f"[PASS] Step counter continued from {last_step_before} to {last_step_after}")
+
+    # Test 3: Original data preserved
+    with open(csv_backup) as f:
+        original_lines = f.readlines()
+    with open(csv_path) as f:
+        current_lines = f.readlines()
+
+    for i, orig_line in enumerate(original_lines):
+        if current_lines[i] != orig_line:
+            print(f"\n[FAIL] Original data at line {i} was modified!")
+            return False
+    print("[PASS] Original metrics data preserved")
+
+    # Test 4: No duplicate folders created
+    matching_folders = list(Path("experiments").glob("test_checkpoint_resume*"))
+    if len(matching_folders) > 1:
+        print(f"\n[FAIL] Multiple folders created: {matching_folders}")
+        return False
+    print("[PASS] Only one experiment folder exists")
+
+    # Clean up
+    print(f"\nCleaning up test directory: {exp_dir}")
+    shutil.rmtree(exp_dir)
+
+    print("\n" + "="*60)
+    print("ALL TESTS PASSED!")
+    print("="*60)
+    print("\nCheckpoint resume is working correctly:")
+    print("  - Checkpoints are saved")
+    print("  - metrics.csv is appended (not cleared)")
+    print("  - Step counter continues correctly")
+    print("  - Original data is preserved")
+    print("  - No duplicate folders created")
+    print()
+
+    return True
+
+
+if __name__ == "__main__":
+    try:
+        success = main()
+        sys.exit(0 if success else 1)
+    except Exception as e:
+        print(f"\n[ERROR] Test failed with exception: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

@@ -253,10 +253,14 @@ for attempt in \$(seq 0 \$((MAX_RETRIES-1))); do
         LATEST_CKPT=\$(ls -v "\$EXISTING_EXP/checkpoints/checkpoint_step_"*.pt 2>/dev/null | tail -1)
 
         if [ -n "\$LATEST_CKPT" ]; then
+            # CRITICAL: Use the existing folder name, not the new timestamp!
+            # This ensures we continue in the same folder and append to metrics.csv
+            EXP_NAME=\$(basename "\$EXISTING_EXP")
             echo "========================================="
             echo "RESUMING FROM CHECKPOINT"
             echo "  Experiment: \$EXISTING_EXP"
             echo "  Checkpoint: \$LATEST_CKPT"
+            echo "  Using existing exp_name: \$EXP_NAME"
             echo "========================================="
             RESUME_ARG="--resume_from \$LATEST_CKPT"
         fi
