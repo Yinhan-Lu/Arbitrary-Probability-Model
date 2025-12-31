@@ -1,1 +1,0 @@
-step,epoch,train_loss,train_perplexity,eval_loss,eval_perplexity,learning_rate,sigmagpt_mode

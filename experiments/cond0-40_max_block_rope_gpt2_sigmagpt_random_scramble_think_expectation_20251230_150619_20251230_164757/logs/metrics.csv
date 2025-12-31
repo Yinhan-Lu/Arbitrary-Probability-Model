@@ -1,0 +1,11 @@
+step,epoch,train_loss,train_perplexity,mode1_loss,mode1_ppl,mode2_loss,mode2_ppl,mode3_loss,mode3_ppl,mode4_loss,mode4_ppl,mode5_loss,mode5_ppl,learning_rate,sigmagpt_mode,ordering_mode,num_thinking_tokens,thinking_token_mode
+10,1,9.835533028841018,18686.060546875,,,,,,,,,,,5.2249999999999996e-05,fair,random_scramble,204,expectation
+20,1,9.17282813191414,9631.822265625,,,,,,,,,,,5.449999999999998e-05,fair,random_scramble,204,expectation
+30,1,8.751716619729995,6321.5302734375,,,,,,,,,,,5.675e-05,fair,random_scramble,204,expectation
+40,1,8.372597163915634,4326.857421875,,,,,,,,,,,5.900000000000001e-05,fair,random_scramble,204,expectation
+50,1,8.037399598956108,3094.5546875,,,,,,,,,,,6.125000000000001e-05,fair,random_scramble,204,expectation
+60,1,7.793862465023994,2425.668212890625,,,,,,,,,,,6.350000000000001e-05,fair,random_scramble,204,expectation
+70,1,7.620628774166107,2039.844482421875,,,,,,,,,,,6.575000000000001e-05,fair,random_scramble,204,expectation
+80,1,7.54082482457161,1883.3829345703125,,,,,,,,,,,6.800000000000003e-05,fair,random_scramble,204,expectation
+90,1,7.4988246887922285,1805.91845703125,,,,,,,,,,,7.025000000000004e-05,fair,random_scramble,204,expectation
+100,1,7.476861402392387,1766.687255859375,,,,,,,,,,,7.250000000000001e-05,fair,random_scramble,204,expectation

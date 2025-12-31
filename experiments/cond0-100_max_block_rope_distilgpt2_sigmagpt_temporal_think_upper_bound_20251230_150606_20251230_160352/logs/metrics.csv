@@ -1,0 +1,11 @@
+step,epoch,train_loss,train_perplexity,mode1_loss,mode1_ppl,mode2_loss,mode2_ppl,mode3_loss,mode3_ppl,mode4_loss,mode4_ppl,mode5_loss,mode5_ppl,learning_rate,sigmagpt_mode,ordering_mode,num_thinking_tokens,thinking_token_mode
+10,1,9.881493031978607,19564.904296875,,,,,,,,,,,5.2249999999999996e-05,fair,temporal,1024,upper_bound
+20,1,9.120172065496444,9137.77734375,,,,,,,,,,,5.449999999999998e-05,fair,temporal,1024,upper_bound
+30,1,8.548235732316972,5157.64794921875,,,,,,,,,,,5.675e-05,fair,temporal,1024,upper_bound
+40,1,8.106028711795807,3314.388916015625,,,,,,,,,,,5.900000000000001e-05,fair,temporal,1024,upper_bound
+50,1,7.752432548999787,2327.22607421875,,,,,,,,,,,6.125000000000001e-05,fair,temporal,1024,upper_bound
+60,1,7.4911140412092205,1792.047607421875,,,,,,,,,,,6.350000000000001e-05,fair,temporal,1024,upper_bound
+70,1,7.294068557024002,1471.5452880859375,,,,,,,,,,,6.575000000000001e-05,fair,temporal,1024,upper_bound
+80,1,7.170219767093658,1300.1304931640625,,,,,,,,,,,6.800000000000003e-05,fair,temporal,1024,upper_bound
+90,1,7.0662818372249605,1171.782958984375,,,,,,,,,,,7.025000000000004e-05,fair,temporal,1024,upper_bound
+100,1,6.986769130825996,1082.2193603515625,,,,,,,,,,,7.250000000000001e-05,fair,temporal,1024,upper_bound
