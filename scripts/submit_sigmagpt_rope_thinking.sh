@@ -233,7 +233,7 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
 #SBATCH --job-name=${JOB_NAME}
 #SBATCH --output=logs/cond0-${COND_PCT}_sigmagpt_${ORDERING}_think_${THINKING}_%j.out
 #SBATCH --error=logs/cond0-${COND_PCT}_sigmagpt_${ORDERING}_think_${THINKING}_%j.err
-#SBATCH --time=3-00:00:00
+#SBATCH --time=5-00:00:00
 #SBATCH --gres=gpu:${GPU_TYPE}
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=${MEMORY}
