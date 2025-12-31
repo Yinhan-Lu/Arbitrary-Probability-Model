@@ -152,11 +152,24 @@ def sigmagpt_evaluate_mode1_autoregressive(model, dataloader, device, max_batche
             total_tokens += valid_tokens
             num_batches += 1
 
+            # Strip thinking token logits if present (for Mode 4/5 compatibility)
+            # With thinking tokens, logits shape is (B, n_thinking + seq_len, vocab)
+            # But labels/attention_mask are (B, seq_len), so we need to strip thinking portion
+            n_thinking = 0
+            if hasattr(model, 'thinking_prepender') and model.thinking_prepender is not None:
+                n_thinking = model.thinking_prepender.get_num_thinking_tokens()
+
+            if n_thinking > 0:
+                # Strip thinking token logits: keep only body logits
+                logits_to_save = logits[:, n_thinking:, :]
+            else:
+                logits_to_save = logits
+
             # Store for Mode 4/5 (CPU, half precision to save memory)
-            all_logits.append(logits.cpu().half())
+            all_logits.append(logits_to_save.cpu().half())
             all_labels.append(input_ids.cpu())
             all_attention_masks.append(attention_mask.cpu())
-            del logits
+            del logits, logits_to_save
             torch.cuda.empty_cache()
 
     avg_loss = total_loss / total_tokens if total_tokens > 0 else 0.0

@@ -606,6 +606,129 @@ def test_causal_mask_extended():
     print("  [PASS] Test 12 passed")
 
 
+def test_evaluation_mode_with_thinking():
+    """Test 13: Verify evaluation modes work correctly with thinking tokens"""
+    print("\n" + "=" * 60)
+    print("[Test 13] Evaluation modes with thinking tokens")
+    print("=" * 60)
+
+    from model.sigmagpt_from_baseline import SigmaGPTModel
+    from model.arbitrary_prob_gpt2 import GPT2Config
+    from model.token_manager import TokenManager
+    from train.sigmagpt_evaluation_modes import (
+        sigmagpt_evaluate_mode1_autoregressive,
+        sigmagpt_evaluate_mode4_cross_boundary
+    )
+    from torch.utils.data import DataLoader, TensorDataset
+
+    # Create config
+    max_seq_len = 64
+    config = GPT2Config(
+        vocab_size=50257,
+        n_layer=2,
+        n_head=4,
+        n_embd=128,
+        max_seq_len=max_seq_len,
+        dropout=0.0,
+        position_encoding_type='dual_rope'
+    )
+
+    # Create model with thinking tokens
+    num_thinking = 16
+    token_manager = TokenManager(
+        add_mask_token=False,
+        add_bos_token=False,
+        num_thinking_tokens=num_thinking
+    )
+    thinking_ids = token_manager.get_thinking_token_ids()
+
+    model = SigmaGPTModel(config, thinking_token_ids=thinking_ids)
+    token_manager.resize_model_embeddings(model)
+    model.eval()
+
+    print(f"  num_thinking = {num_thinking}")
+    print(f"  max_seq_len = {max_seq_len}")
+
+    # Create fake dataloader
+    B, T = 4, 32
+    input_ids = torch.randint(0, 50257, (B, T))
+    attention_mask = torch.ones(B, T, dtype=torch.long)
+
+    dataset = TensorDataset(input_ids, attention_mask)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=2,
+        collate_fn=lambda batch: {
+            'input_ids': torch.stack([b[0] for b in batch]),
+            'attention_mask': torch.stack([b[1] for b in batch])
+        }
+    )
+
+    # Run Mode 1 evaluation
+    print("  Running Mode 1 (autoregressive)...")
+    metrics_mode1 = sigmagpt_evaluate_mode1_autoregressive(
+        model, dataloader, device='cpu', max_batches=2
+    )
+
+    print(f"    Mode 1 loss: {metrics_mode1['loss']:.4f}")
+    print(f"    Mode 1 perplexity: {metrics_mode1['perplexity']:.4f}")
+
+    # Check that logits have correct shape (should match labels, not include thinking tokens)
+    logits_batch = metrics_mode1['logits_list'][0]
+    labels_batch = metrics_mode1['labels_list'][0]
+    attn_batch = metrics_mode1['attention_mask_list'][0]
+
+    print(f"    Logits shape: {logits_batch.shape}")
+    print(f"    Labels shape: {labels_batch.shape}")
+    print(f"    Attention mask shape: {attn_batch.shape}")
+
+    # Critical check: logits and labels should have matching sequence length
+    # Before fix: logits would be (B, T + num_thinking, vocab) but labels would be (B, T)
+    # After fix: logits should be (B, T, vocab) and labels should be (B, T)
+    assert logits_batch.shape[1] == labels_batch.shape[1], \
+        f"Logits seq_len ({logits_batch.shape[1]}) != labels seq_len ({labels_batch.shape[1]}). " \
+        f"This means thinking token logits were not stripped in Mode 1!"
+
+    print("    Logits and labels have matching lengths (bug is fixed)")
+
+    # Now test Mode 4 with fake eval_indices
+    print("  Running Mode 4 (cross-boundary)...")
+
+    # Create fake eval_indices (indices into the original body)
+    # Each sample has some evaluation positions
+    eval_indices_list = [
+        list(range(5, 15)),  # positions 5-14
+        list(range(10, 20)),  # positions 10-19
+        list(range(3, 10)),  # positions 3-9
+        list(range(8, 18)),  # positions 8-17
+    ]
+
+    try:
+        metrics_mode4 = sigmagpt_evaluate_mode4_cross_boundary(
+            metrics_mode1['logits_list'],
+            metrics_mode1['labels_list'],
+            eval_indices_list,
+            metrics_mode1['attention_mask_list']
+        )
+
+        print(f"    Mode 4 loss: {metrics_mode4['loss']:.4f}")
+        print(f"    Mode 4 perplexity: {metrics_mode4['perplexity']:.4f}")
+        print(f"    Mode 4 total_tokens: {metrics_mode4['total_tokens']}")
+
+        # Verify metrics are valid
+        assert metrics_mode4['loss'] >= 0, "Loss should be non-negative"
+        assert metrics_mode4['total_tokens'] > 0, "Should have evaluated some tokens"
+
+        print("    Mode 4 completed successfully")
+    except IndexError as e:
+        raise AssertionError(
+            f"Mode 4 failed with IndexError: {e}. "
+            f"This is the bug where logits/labels have mismatched lengths!"
+        )
+
+    print("  [PASS] Test 13 passed")
+
+
 def run_all_tests():
     """Run all thinking token tests"""
     print("\n" + "=" * 60)
@@ -625,6 +748,7 @@ def run_all_tests():
         ("Position encoding extended range (RoPE)", test_position_encoding_range),
         ("Position encoding extended range (learned)", test_position_encoding_learned_mode),
         ("Causal mask extended", test_causal_mask_extended),
+        ("Evaluation modes with thinking", test_evaluation_mode_with_thinking),
     ]
 
     passed = 0
