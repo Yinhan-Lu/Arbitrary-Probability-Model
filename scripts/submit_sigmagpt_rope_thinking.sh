@@ -200,14 +200,31 @@ for MODEL_CONFIG in "${MODEL_CONFIGS[@]}"; do
                 # Create temporary job script
                 SCRIPT_FILE="/tmp/submit_${EXP_NAME}.sh"
 
-                # Determine GPU and memory based on model size and thinking tokens
-                # Thinking tokens add to sequence length, may need more memory
+                # Determine GPU and memory based on model size, thinking mode, and cond_pct
+                # Thinking tokens add to sequence length: effective_max_pos = 1024 + n_thinking
+                # Causal mask size scales quadratically with sequence length
+                # upper_bound mode uses 2x more thinking tokens than expectation mode
+                GPU_TYPE="a100l:1"
+
+                # Base memory requirements
                 if [ "$MODEL_CONFIG" == "gpt2_medium" ]; then
-                    GPU_TYPE="a100l:1"
-                    MEMORY="64G"  # More memory for thinking tokens
+                    BASE_MEMORY=64
                 else
-                    GPU_TYPE="a100l:1"
-                    MEMORY="48G"
+                    BASE_MEMORY=48
+                fi
+
+                # Increase memory for upper_bound mode with high cond_pct
+                # upper_bound + 0-100% = 1024 thinking tokens, effective_max_pos = 2048
+                if [ "$THINKING" == "upper_bound" ]; then
+                    if [ "$COND_MAX" == "1.0" ] || [ "$COND_MAX" == "0.8" ]; then
+                        MEMORY="80G"  # High memory for large effective sequence length
+                    elif [ "$COND_MAX" == "0.6" ]; then
+                        MEMORY="72G"
+                    else
+                        MEMORY="${BASE_MEMORY}G"
+                    fi
+                else
+                    MEMORY="${BASE_MEMORY}G"
                 fi
 
                 # Write SLURM script
@@ -289,6 +306,8 @@ if [ -n "\$EXISTING_EXP" ] && [ -d "\$EXISTING_EXP/checkpoints" ]; then
 fi
 
 # Run training with thinking tokens
+# NOTE: gradient_checkpointing enabled to handle larger sequence lengths
+# (sequence length = body + n_thinking, causal mask size increases quadratically)
 python3 ./train.py \\
     --model_type sigmagpt \\
     --model_config ${MODEL_CONFIG} \\
@@ -297,6 +316,7 @@ python3 ./train.py \\
     --ordering_mode ${ORDERING} \\
     --use_thinking_tokens \\
     --thinking_token_mode ${THINKING} \\
+    --gradient_checkpointing \\
     --num_epochs ${NUM_EPOCHS} \\
     --batch_size ${BATCH_SIZE} \\
     --eval_batch_size 16 \\
