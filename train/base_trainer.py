@@ -26,6 +26,7 @@ import csv
 from datetime import datetime
 from tqdm import tqdm
 import math
+import re
 
 logging.basicConfig(
     level=logging.INFO,
@@ -97,8 +98,10 @@ class BaseTrainer(ABC):
         self.early_stop_triggered = False
 
         # Setup CSV logger
+        # CRITICAL: Use append mode when resuming to preserve existing metrics
+        is_resuming = hasattr(args, 'resume_from') and args.resume_from
         self.csv_log_file = self.exp_dir / "logs" / "metrics.csv"
-        self._init_csv_logger()
+        self._init_csv_logger(append=is_resuming)
 
     @abstractmethod
     def setup_model(self):
@@ -382,7 +385,16 @@ class BaseTrainer(ABC):
         else:
             # New training: create timestamped directory
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            exp_name = f"{args.exp_name}_{timestamp}" if hasattr(args, 'exp_name') and args.exp_name else f"exp_{timestamp}"
+            if hasattr(args, 'exp_name') and args.exp_name:
+                # Check if exp_name already ends with a timestamp (YYYYMMDD_HHMMSS pattern)
+                # This prevents double timestamps when submission scripts include their own
+                has_timestamp = re.search(r'_\d{8}_\d{6}$', args.exp_name) is not None
+                if has_timestamp:
+                    exp_name = args.exp_name  # Use as-is, already has timestamp
+                else:
+                    exp_name = f"{args.exp_name}_{timestamp}"
+            else:
+                exp_name = f"exp_{timestamp}"
             exp_dir = Path(args.output_dir) / exp_name
 
         exp_dir.mkdir(parents=True, exist_ok=True)
