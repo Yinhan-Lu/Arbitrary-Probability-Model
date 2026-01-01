@@ -41,6 +41,7 @@ from train.conditional_trainer import ConditionalTrainer
 from train.baseline_trainer import BaselineTrainer
 from train.sigmagpt_trainer import SigmaGPTTrainer
 from train.distilbert_trainer import DistilBertTrainer
+from train.diffusion_trainer import DiffusionTrainer
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -97,8 +98,8 @@ def parse_args():
         "--model_type",
         type=str,
         required=True,
-        choices=["conditional", "baseline", "sigmagpt", "distilbert"],
-        help="Type of model to train: 'conditional', 'baseline', 'sigmagpt', or 'distilbert' "
+        choices=["conditional", "baseline", "sigmagpt", "distilbert", "diffusion"],
+        help="Type of model to train: 'conditional', 'baseline', 'sigmagpt', 'distilbert', or 'diffusion'"
     )
 
     # ========== Common Arguments (Shared by All Models) ==========
@@ -593,6 +594,92 @@ def parse_args():
             help="Use mixed precision training (FP16)"
         )
 
+    elif args.model_type == "diffusion":
+        # Diffusion model specific arguments
+        parser.add_argument(
+            "--num_diffusion_steps",
+            type=int,
+            default=1000,
+            help="Number of diffusion timesteps (T)"
+        )
+        parser.add_argument(
+            "--noise_schedule",
+            type=str,
+            default="cosine",
+            choices=["cosine", "linear", "sqrt"],
+            help="Noise schedule type for diffusion"
+        )
+        parser.add_argument(
+            "--time_emb_type",
+            type=str,
+            default="sinusoidal",
+            choices=["sinusoidal", "learned"],
+            help="Timestep embedding type: 'sinusoidal' or 'learned'"
+        )
+        parser.add_argument(
+            "--num_nll_samples",
+            type=int,
+            default=10,
+            help="Number of timestep samples for NLL estimation during evaluation"
+        )
+        # Conditioning parameters (same as conditional model)
+        parser.add_argument(
+            "--cond_pct_min",
+            type=float,
+            default=0.0,
+            help="Minimum conditioning percentage"
+        )
+        parser.add_argument(
+            "--cond_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum conditioning percentage"
+        )
+        parser.add_argument(
+            "--eval_pct_min",
+            type=float,
+            default=0.2,
+            help="Minimum evaluation percentage"
+        )
+        parser.add_argument(
+            "--eval_pct_max",
+            type=float,
+            default=0.4,
+            help="Maximum evaluation percentage"
+        )
+        parser.add_argument(
+            "--conditioning_sampling",
+            type=str,
+            default="blockwise",
+            choices=["random", "blockwise"],
+            help="Conditioning sampling strategy"
+        )
+        parser.add_argument(
+            "--evaluation_sampling",
+            type=str,
+            default="blockwise",
+            choices=["random", "blockwise"],
+            help="Evaluation sampling strategy"
+        )
+        # Mode 2 (Boundary filling) evaluation parameters
+        parser.add_argument(
+            "--mode2_boundary_cond_pct_min",
+            type=float,
+            default=0.1,
+            help="Minimum conditioning percentage for Mode 2 boundary evaluation"
+        )
+        parser.add_argument(
+            "--mode2_boundary_cond_pct_max",
+            type=float,
+            default=0.3,
+            help="Maximum conditioning percentage for Mode 2 boundary evaluation"
+        )
+        parser.add_argument(
+            "--fp16",
+            action="store_true",
+            help="Use mixed precision training (FP16)"
+        )
+
     # Parse all arguments
     args = parser.parse_args()
 
@@ -621,6 +708,9 @@ def create_trainer(args):
     elif args.model_type == "distilbert":
         logger.info("Creating DistilBert Trainer...")
         return DistilBertTrainer(args)
+    elif args.model_type == "diffusion":
+        logger.info("Creating Diffusion Trainer...")
+        return DiffusionTrainer(args)
     else:
         raise ValueError(f"Unknown model_type: {args.model_type}")
 

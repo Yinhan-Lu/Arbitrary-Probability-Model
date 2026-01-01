@@ -96,6 +96,46 @@ GPT2_MEDIUM_CONFIG = GPT2Config(
 )
 
 
+# Diffusion model configurations
+# These use the same architecture as their autoregressive counterparts
+# for fair comparison. The only difference is the training objective.
+DIFFUSION_DISTILGPT2_CONFIG = GPT2Config(
+    vocab_size=50258,           # +1 for [MASK] token
+    n_layer=6,                  # Same as distilgpt2
+    n_head=12,                  # Same as distilgpt2
+    n_embd=768,                 # Same as distilgpt2
+    max_seq_len=1024,           # Same as distilgpt2
+    dropout=0.1,                # Same as distilgpt2
+    layer_norm_eps=1e-5,        # Same as distilgpt2
+    ffn_mult=4,                 # Same as distilgpt2
+    activation_function="gelu_new"
+)
+
+DIFFUSION_GPT2_CONFIG = GPT2Config(
+    vocab_size=50258,           # +1 for [MASK] token
+    n_layer=12,                 # Same as gpt2
+    n_head=12,                  # Same as gpt2
+    n_embd=768,                 # Same as gpt2
+    max_seq_len=1024,           # Same as gpt2
+    dropout=0.1,
+    layer_norm_eps=1e-5,
+    ffn_mult=4,
+    activation_function="gelu_new"
+)
+
+DIFFUSION_GPT2_MEDIUM_CONFIG = GPT2Config(
+    vocab_size=50258,           # +1 for [MASK] token
+    n_layer=12,                 # Same as gpt2_medium
+    n_head=16,                  # Same as gpt2_medium
+    n_embd=1024,                # Same as gpt2_medium
+    max_seq_len=1024,           # Same as gpt2_medium
+    dropout=0.1,
+    layer_norm_eps=1e-5,
+    ffn_mult=4,
+    activation_function="gelu_new"
+)
+
+
 # Configuration registry
 CONFIGS = {
     "distilgpt2": DISTILGPT2_CONFIG,
@@ -103,7 +143,11 @@ CONFIGS = {
     "gpt2_medium": GPT2_MEDIUM_CONFIG,
     "small": SMALL_CONFIG,
     "tiny": TINY_CONFIG,
-    "nano": NANO_CONFIG
+    "nano": NANO_CONFIG,
+    # Diffusion model configs
+    "diffusion_distilgpt2": DIFFUSION_DISTILGPT2_CONFIG,
+    "diffusion_gpt2": DIFFUSION_GPT2_CONFIG,
+    "diffusion_gpt2_medium": DIFFUSION_GPT2_MEDIUM_CONFIG,
 }
 
 
