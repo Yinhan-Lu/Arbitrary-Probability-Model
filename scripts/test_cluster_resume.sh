@@ -35,7 +35,7 @@ THINKING="expectation"
 TEST_PREFIX="TEST_RESUME"
 
 # Polling interval (seconds)
-POLL_INTERVAL=30
+POLL_INTERVAL=10
 
 # Maximum wait time for checkpoint (seconds) - 10 minutes
 MAX_WAIT=600
@@ -273,11 +273,11 @@ python3 ./train.py \
     --ordering_mode ${ORDERING} \
     --use_thinking_tokens \
     --thinking_token_mode ${THINKING} \
-    --num_epochs 1 \
+    --num_epochs 3 \
     --batch_size 8 \
     --eval_batch_size 16 \
     --gradient_accumulation_steps 4 \
-    --num_train_samples 500 \
+    --num_train_samples 10000 \
     --num_eval_samples 100 \
     --learning_rate 5e-4 \
     --warmup_steps 50 \
@@ -291,9 +291,9 @@ python3 ./train.py \
     --evaluation_sampling blockwise \
     --mode2_boundary_cond_pct_min 0.0 \
     --mode2_boundary_cond_pct_max ${COND_MAX} \
-    --logging_steps 10 \
+    --logging_steps 1 \
     --eval_steps 100 \
-    --save_steps 50 \
+    --save_steps 5 \
     --early_stopping_patience 0 \
     --do_eval \
     --max_eval_batches 5 \
