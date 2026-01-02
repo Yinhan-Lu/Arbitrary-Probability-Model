@@ -1,6 +1,0 @@
-step,epoch,train_loss,train_perplexity,mode1_loss,mode1_ppl,mode2_loss,mode2_ppl,mode3_loss,mode3_ppl,mode4_loss,mode4_ppl,mode5_loss,mode5_ppl,learning_rate,sigmagpt_mode,ordering_mode,num_thinking_tokens,thinking_token_mode
-10,1,9.861249387264252,19172.8203125,,,,,,,,,,,5.2249999999999996e-05,fair,random_scramble,1024,upper_bound
-20,1,9.197530460357665,9872.720703125,,,,,,,,,,,5.449999999999998e-05,fair,random_scramble,1024,upper_bound
-30,1,8.778561115264893,6493.52392578125,,,,,,,,,,,5.675e-05,fair,random_scramble,1024,upper_bound
-40,1,8.405282646417618,4470.62255859375,,,,,,,,,,,5.900000000000001e-05,fair,random_scramble,1024,upper_bound
-50,1,8.072721561789512,3205.814453125,,,,,,,,,,,6.125000000000001e-05,fair,random_scramble,1024,upper_bound
