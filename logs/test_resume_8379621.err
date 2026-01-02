@@ -1,0 +1,159 @@
+[=== Module cudatoolkit/12.1.1 loaded ===]
+[=== Module cuda/12.1.1/cudnn/8.9 loaded ===]
+INFO:__main__:Random seed set to: 42
+INFO:__main__:================================================================================
+INFO:__main__:Unified Training Script
+INFO:__main__:================================================================================
+INFO:__main__:Model Type: sigmagpt
+INFO:__main__:================================================================================
+INFO:__main__:Training Configuration:
+INFO:__main__:================================================================================
+INFO:__main__:  adam_beta1: 0.9
+INFO:__main__:  adam_beta2: 0.999
+INFO:__main__:  adam_epsilon: 1e-08
+INFO:__main__:  batch_size: 8
+INFO:__main__:  cond_pct_max: 0.2
+INFO:__main__:  cond_pct_min: 0.0
+INFO:__main__:  conditioning_sampling: blockwise
+INFO:__main__:  dataset_config: wikitext-103-raw-v1
+INFO:__main__:  dataset_name: wikitext
+INFO:__main__:  device: cuda
+INFO:__main__:  do_eval: True
+INFO:__main__:  early_stopping_patience: 0
+INFO:__main__:  eval_batch_size: 16
+INFO:__main__:  eval_pct_max: 1.0
+INFO:__main__:  eval_pct_min: 1.0
+INFO:__main__:  eval_steps: 100
+INFO:__main__:  evaluation_sampling: blockwise
+INFO:__main__:  exp_name: TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20251231_191653
+INFO:__main__:  fp16: False
+INFO:__main__:  gradient_accumulation_steps: 4
+INFO:__main__:  gradient_checkpointing: False
+INFO:__main__:  learning_rate: 0.0005
+INFO:__main__:  logging_steps: 10
+INFO:__main__:  max_cond_blocks: None
+INFO:__main__:  max_eval_batches: 5
+INFO:__main__:  max_grad_norm: 1.0
+INFO:__main__:  min_lr_ratio: 0.1
+INFO:__main__:  mode2_boundary_cond_pct_max: 0.2
+INFO:__main__:  mode2_boundary_cond_pct_min: 0.0
+INFO:__main__:  model_config: distilgpt2
+INFO:__main__:  model_type: sigmagpt
+INFO:__main__:  num_epochs: 1
+INFO:__main__:  num_eval_samples: 100
+INFO:__main__:  num_train_samples: 500
+INFO:__main__:  num_workers: 4
+INFO:__main__:  ordering_mode: temporal
+INFO:__main__:  output_dir: ./experiments
+INFO:__main__:  position_encoding_type: rope
+INFO:__main__:  primary_dataset_only: True
+INFO:__main__:  resume_from: None
+INFO:__main__:  rope_base: 10000.0
+INFO:__main__:  save_steps: 50
+INFO:__main__:  seed: 42
+INFO:__main__:  sigmagpt_arch: new
+INFO:__main__:  sigmagpt_eval_mode: autoregressive
+INFO:__main__:  sigmagpt_mode: fair
+INFO:__main__:  streaming: False
+INFO:__main__:  thinking_token_mode: expectation
+INFO:__main__:  use_thinking_tokens: True
+INFO:__main__:  warmup_start_factor: 0.1
+INFO:__main__:  warmup_steps: 50
+INFO:__main__:  weight_decay: 0.1
+INFO:__main__:================================================================================
+INFO:__main__:Creating Sigma GPT Trainer...
+INFO:train.base_trainer:Using device: cuda
+INFO:train.base_trainer:Experiment directory: experiments/TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20251231_191653
+INFO:train.base_trainer:Setting up model...
+INFO:train.sigmagpt_trainer:Setting up Sigma GPT model...
+INFO:train.sigmagpt_trainer:Position encoding type: dual_rope
+INFO:model.thinking_tokens:Computed thinking token count: n=102 (cond_pct_max=0.2, mode=expectation)
+INFO:train.sigmagpt_trainer:Thinking tokens: 102 (mode=expectation, cond_pct_max=0.2)
+INFO:model.token_manager:Loading GPT-2 tokenizer...
+INFO:model.token_manager:Added 102 thinking tokens: [think_1] (ID: 50257) to [think_102] (ID: 50358)
+INFO:model.token_manager:TokenManager initialized:
+INFO:model.token_manager:  Original vocab size: 50257
+INFO:model.token_manager:  New vocab size: 50359
+INFO:model.token_manager:  Mask token: None (ID: None)
+INFO:model.token_manager:  BOS token: <|endoftext|> (ID: 50256)
+INFO:model.token_manager:  Thinking tokens: 102 (IDs: 50257-50358)
+INFO:train.sigmagpt_trainer:TokenManager created with 102 thinking tokens (IDs: 50257-50358)
+INFO:model.thinking_tokens:ThinkingTokenPrepender initialized with 102 tokens (IDs: 50257 to 50358)
+INFO:train.sigmagpt_trainer:Sigma GPT NEW (from baseline) initialized with 81.13M parameters
+INFO:model.token_manager:Resizing embeddings from 50257 to 50359
+INFO:model.token_manager:Embeddings resized successfully
+INFO:model.token_manager:  Token embedding shape: torch.Size([50359, 768])
+INFO:model.token_manager:  LM head shape: torch.Size([50359, 768])
+INFO:train.sigmagpt_trainer:Model embeddings resized for thinking tokens
+INFO:train.sigmagpt_trainer:Training mode: fair (~40% learning efficiency)
+INFO:train.sigmagpt_trainer:Evaluation mode: autoregressive
+INFO:train.base_trainer:Setting up data loaders...
+INFO:train.sigmagpt_trainer:Setting up data components...
+INFO:train.sigmagpt_trainer:Distribution config: cond=0%-20%, eval=100%-100%
+INFO:train.augmentation:ConditionalAugmenter initialized:
+INFO:train.augmentation:  Mask token ID: 50256
+INFO:train.augmentation:  BOS token ID: 50256
+INFO:train.augmentation:  Padding:
+INFO:train.augmentation:    Max sequence length: 1024
+INFO:train.augmentation:    Max conditioning %: 50.0%
+INFO:train.augmentation:    Augmented max length: 1537
+INFO:train.augmentation:  Mode: Distribution-based sampling
+INFO:train.augmentation:  Conditioning sampling: blockwise
+INFO:train.augmentation:  Evaluation sampling: blockwise
+INFO:train.augmentation:  Ordering mode: temporal
+INFO:train.sigmagpt_trainer:ConditionalAugmenter initialized (conditioning: blockwise, evaluation: blockwise, ordering: temporal)
+INFO:train.sigmagpt_trainer:SigmaGPTDataAdapter initialized (mode: fair)
+INFO:train.sigmagpt_trainer:Creating training dataloader (batch_size: 8, num_workers: 4)...
+INFO:train.dataset:Loading GPT-2 tokenizer...
+INFO:train.dataset:Loading Wikipedia dataset: wikitext (wikitext-103-raw-v1), split=train
+INFO:train.dataset:Attempting to load dataset wikitext (attempt 1/3)...
+INFO:train.dataset:Successfully loaded wikitext!
+INFO:train.dataset:Using 500 documents out of 1801350
+INFO:train.dataset:Dataset loaded successfully. Documents: 500
+INFO:train.dataset:Preprocessing: concatenating documents and chunking...
+INFO:train.dataset:Processing 500 documents...
+INFO:train.dataset:Total tokens accumulated: 26,375
+INFO:train.dataset:Created 25 complete chunks
+INFO:train.dataset:Dropped 775 tokens (2.94%) from incomplete last chunk
+INFO:train.dataset:Created 25 chunks of length 1024
+INFO:train.sigmagpt_trainer:Training dataloader created with 4 batches per epoch
+INFO:train.sigmagpt_trainer:Creating validation dataloader (batch_size: 16, num_workers: 4)...
+INFO:train.dataset:Loading GPT-2 tokenizer...
+INFO:train.dataset:Loading Wikipedia dataset: wikitext (wikitext-103-raw-v1), split=validation
+INFO:train.dataset:Attempting to load dataset wikitext (attempt 1/3)...
+INFO:train.dataset:Successfully loaded wikitext!
+INFO:train.dataset:Using 100 documents out of 3760
+INFO:train.dataset:Dataset loaded successfully. Documents: 100
+INFO:train.dataset:Preprocessing: concatenating documents and chunking...
+INFO:train.dataset:Processing 100 documents...
+INFO:train.dataset:Total tokens accumulated: 6,351
+INFO:train.dataset:Created 6 complete chunks
+INFO:train.dataset:Dropped 207 tokens (3.26%) from incomplete last chunk
+INFO:train.dataset:Created 6 chunks of length 1024
+INFO:train.sigmagpt_trainer:Validation dataloader created with 1 batches
+INFO:train.base_trainer:Setting up optimizer and scheduler...
+INFO:train.base_trainer:Total training steps: 1
+INFO:train.base_trainer:Warmup steps: 50
+INFO:train.base_trainer:================================================================================
+INFO:train.base_trainer:Starting Training
+INFO:train.base_trainer:================================================================================
+INFO:train.base_trainer:Model parameters: 81.20M
+INFO:train.base_trainer:Training samples: 25
+INFO:train.base_trainer:Batch size: 8
+INFO:train.base_trainer:Gradient accumulation steps: 4
+INFO:train.base_trainer:Effective batch size: 32
+INFO:train.base_trainer:Number of epochs: 1
+INFO:train.base_trainer:Total training steps: 1
+INFO:train.base_trainer:================================================================================
+INFO:train.base_trainer:
+Epoch 1/1
+Epoch 1:   0%|          | 0/4 [00:00<?, ?it/s]Epoch 1:  25%|██▌       | 1/4 [00:01<00:03,  1.19s/it]Epoch 1:  50%|█████     | 2/4 [00:01<00:01,  1.55it/s]Epoch 1:  75%|███████▌  | 3/4 [00:01<00:00,  2.10it/s]Epoch 1:  75%|███████▌  | 3/4 [00:02<00:00,  2.10it/s, loss=10.9673, lr=5.90e-05]Epoch 1: 100%|██████████| 4/4 [00:02<00:00,  2.51it/s, loss=10.9673, lr=5.90e-05]Epoch 1: 100%|██████████| 4/4 [00:02<00:00,  1.94it/s, loss=10.9673, lr=5.90e-05]
+INFO:train.base_trainer:
+Training completed!
+INFO:train.base_trainer:Checkpoint saved: experiments/TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20251231_191653/checkpoints/final_model.pt
+INFO:train.base_trainer:Final model saved to experiments/TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20251231_191653/checkpoints/final_model.pt
+INFO:__main__:
+================================================================================
+INFO:__main__:Training completed successfully!
+INFO:__main__:================================================================================
+/etc/slurm/slurmtask_epilog: line 25: [: too many arguments

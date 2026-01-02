@@ -1,0 +1,30 @@
+=========================================
+TEST RESUME EXPERIMENT
+=========================================
+Job ID: 8381135
+Node: cn-g004
+Start Time: Thu Jan  1 08:18:39 PM EST 2026
+=========================================
+Thu Jan  1 20:18:39 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.95.05              Driver Version: 580.95.05      CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-80GB          On  |   00000000:41:00.0 Off |                    0 |
+| N/A   24C    P0             64W /  500W |       0MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Python: /home/mila/l/luy/.conda/envs/arbprob/bin/python3
+=========================================
+Sigma GPT Model (from baseline) initialized with 81.13M parameters, position_encoding=dual_rope, thinking_tokens=102, effective_max_pos=1126

@@ -1,0 +1,41 @@
+=========================================
+TEST RESUME EXPERIMENT
+=========================================
+Job ID: 8381136
+Node: cn-g004
+Start Time: Thu Jan  1 08:21:39 PM EST 2026
+=========================================
+Thu Jan  1 20:21:39 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.95.05              Driver Version: 580.95.05      CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-80GB          On  |   00000000:41:00.0 Off |                    0 |
+| N/A   24C    P0             64W /  500W |       0MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+Python: /home/mila/l/luy/.conda/envs/arbprob/bin/python3
+=========================================
+=========================================
+RESUMING FROM CHECKPOINT
+  Experiment: ./experiments/TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20260101_201824
+  Checkpoint: ./experiments/TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20260101_201824/checkpoints/checkpoint_step_5.pt
+  Using existing exp_name: TEST_RESUME_cond0-20_rope_distilgpt2_sigmagpt_temporal_think_expectation_20260101_201824
+=========================================
+Sigma GPT Model (from baseline) initialized with 81.13M parameters, position_encoding=dual_rope, thinking_tokens=102, effective_max_pos=1126
+=========================================
+Training Completed
+Exit code: 1
+Duration: 19 seconds
+=========================================
