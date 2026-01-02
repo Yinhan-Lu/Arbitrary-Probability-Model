@@ -728,7 +728,11 @@ class BaseTrainer(ABC):
             "generator_state": generator_state  # For deterministic shuffle resume
         }
 
-        torch.save(checkpoint, checkpoint_path)
+        # Save atomically: write to temp file first, then rename
+        # This prevents corrupted checkpoints if process is killed during save
+        temp_path = str(checkpoint_path) + '.tmp'
+        torch.save(checkpoint, temp_path)
+        os.rename(temp_path, checkpoint_path)
         logger.info(f"Checkpoint saved: {checkpoint_path}")
 
     def load_checkpoint(self, checkpoint_path, resume_csv=True):

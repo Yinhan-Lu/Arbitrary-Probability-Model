@@ -124,6 +124,17 @@ wait_for_checkpoint() {
 
             if [ -n "$CHECKPOINT" ]; then
                 echo "✓ Checkpoint found: $CHECKPOINT"
+                # Wait for checkpoint to be fully written (file size stabilizes)
+                echo "  Waiting 30s for checkpoint to finish writing..."
+                sleep 30
+                # Double-check the file still exists and is non-empty
+                if [ -f "$CHECKPOINT" ] && [ -s "$CHECKPOINT" ]; then
+                    echo "✓ Checkpoint appears complete"
+                    return 0
+                else
+                    echo "  Checkpoint may still be writing, waiting more..."
+                    sleep 10
+                fi
                 return 0
             fi
         fi
