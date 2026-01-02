@@ -761,6 +761,9 @@ class BaseTrainer(ABC):
         # Restore generator state for deterministic shuffle
         generator_state = checkpoint.get("generator_state")
         if generator_state is not None and hasattr(self.train_loader, 'shuffle_generator') and self.train_loader.shuffle_generator is not None:
+            # Ensure state is ByteTensor (may be converted during save/load)
+            if not isinstance(generator_state, torch.ByteTensor):
+                generator_state = generator_state.to(torch.uint8)
             self.train_loader.shuffle_generator.set_state(generator_state)
             logger.info("Restored DataLoader shuffle generator state")
 
