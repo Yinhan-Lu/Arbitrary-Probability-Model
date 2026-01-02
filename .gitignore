@@ -41,7 +41,7 @@ model_weights/
 saved_models/
 
 # Logs and checkpoints
-logs/
+
 checkpoints/
 runs/
 wandb/
@@ -206,3 +206,5 @@ plots/
 comparison_between_experiments/
 
 old_experiments/
+experiments_archive/
+logs_archive/
