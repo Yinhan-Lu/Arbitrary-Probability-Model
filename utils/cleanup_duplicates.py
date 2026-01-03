@@ -2,13 +2,23 @@
 """
 Duplicate Experiment Cleanup Script
 
-For experiment folders with the same prefix (before timestamp), keeps only one:
-1. If any folder has both plots/ and plots_individual/ → keep that one
-2. Otherwise → keep the one with most lines in logs/metrics.csv
+For experiment folders with the same prefix (before timestamp), keeps only one.
+
+Two modes available:
+  --mode best (default):
+    1. If any folder has both plots/ and plots_individual/ → keep that one
+    2. Otherwise → keep the one with most lines in logs/metrics.csv
+
+  --mode earliest:
+    1. Keep only the folder with earliest timestamp, delete all others
+    2. If the earliest folder has no checkpoints → delete it too
 
 Usage:
     # Preview what will be deleted (dry run - default)
     python utils/cleanup_duplicates.py experiments/
+
+    # Use earliest mode
+    python utils/cleanup_duplicates.py experiments/ --mode earliest
 
     # Actually delete
     python utils/cleanup_duplicates.py experiments/ --execute
@@ -64,6 +74,24 @@ def extract_prefix(folder_name: str) -> str | None:
     return None
 
 
+def extract_timestamp(folder_name: str) -> str | None:
+    """Extract timestamp from folder name (YYYYMMDD_HHMMSS)."""
+    match = re.match(r'^(.+)_(\d{8}_\d{6})$', folder_name)
+    if match:
+        return match.group(2)
+    return None
+
+
+def has_checkpoints(folder: Path) -> bool:
+    """Check if folder has any checkpoint files."""
+    checkpoints_dir = folder / "checkpoints"
+    if not checkpoints_dir.is_dir():
+        return False
+    # Check for any .pt files
+    pt_files = list(checkpoints_dir.glob("*.pt"))
+    return len(pt_files) > 0
+
+
 def has_plot_folders(folder: Path) -> bool:
     """Check if folder has both plots/ and plots_individual/ directories."""
     plots = folder / "plots"
@@ -111,6 +139,30 @@ def select_best_folder(folders: list[Path]) -> tuple[Path, str]:
     return folders[0], "fallback (first folder)"
 
 
+def select_earliest_folder(folders: list[Path]) -> tuple[Path, str]:
+    """
+    Select the folder with earliest timestamp.
+
+    Returns:
+        (earliest_folder, reason)
+    """
+    earliest_folder = None
+    earliest_timestamp = None
+
+    for folder in folders:
+        timestamp = extract_timestamp(folder.name)
+        if timestamp:
+            if earliest_timestamp is None or timestamp < earliest_timestamp:
+                earliest_timestamp = timestamp
+                earliest_folder = folder
+
+    if earliest_folder:
+        return earliest_folder, f"earliest timestamp ({earliest_timestamp})"
+
+    # Fallback: just keep the first one
+    return folders[0], "fallback (first folder)"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Clean up duplicate experiment folders, keeping the best one per config.",
@@ -137,6 +189,12 @@ Examples:
         action="store_true",
         help="Show detailed information about each folder"
     )
+    parser.add_argument(
+        "-m", "--mode",
+        choices=["best", "earliest"],
+        default="best",
+        help="Selection mode: 'best' (plots/metrics), 'earliest' (timestamp)"
+    )
 
     args = parser.parse_args()
 
@@ -155,7 +213,8 @@ Examples:
     print("Duplicate Experiment Cleanup Script")
     print("=" * 70)
     print(f"Directory: {base_dir.resolve()}")
-    print(f"Mode: {'EXECUTE (will delete folders)' if args.execute else 'DRY RUN (preview only)'}")
+    print(f"Selection mode: {args.mode}")
+    print(f"Execute: {'YES (will delete folders)' if args.execute else 'NO (dry run)'}")
     print("-" * 70)
 
     # Group folders by prefix
@@ -172,28 +231,51 @@ Examples:
     total_deleted = 0
     total_bytes = 0
     groups_with_duplicates = 0
+    empty_earliest_deleted = 0
 
     for prefix, folders in sorted(prefix_groups.items()):
         if len(folders) <= 1:
-            continue  # No duplicates
+            # For earliest mode, still check if single folder has no checkpoints
+            if args.mode == "earliest" and len(folders) == 1:
+                folder = folders[0]
+                if not has_checkpoints(folder):
+                    folder_size = get_folder_size(folder)
+                    total_bytes += folder_size
+                    total_deleted += 1
+                    empty_earliest_deleted += 1
+
+                    print(f"\n{prefix}")
+                    print(f"  Single folder with NO checkpoints")
+                    print(f"  {'Deleting' if args.execute else 'Would delete'}: {folder.name} ({format_size(folder_size)})")
+
+                    if args.execute:
+                        shutil.rmtree(folder)
+            continue
 
         groups_with_duplicates += 1
-        best_folder, reason = select_best_folder(folders)
+
+        # Select folder based on mode
+        if args.mode == "earliest":
+            keep_folder, reason = select_earliest_folder(folders)
+        else:
+            keep_folder, reason = select_best_folder(folders)
 
         print(f"\n{prefix}")
-        print(f"  Found {len(folders)} folders, keeping: {best_folder.name}")
+        print(f"  Found {len(folders)} folders, keeping: {keep_folder.name}")
         print(f"  Reason: {reason}")
 
         if args.verbose:
             for folder in folders:
                 has_plots = "✓" if has_plot_folders(folder) else "✗"
+                has_ckpt = "✓" if has_checkpoints(folder) else "✗"
                 metrics_lines = get_metrics_lines(folder)
-                keep_marker = " [KEEP]" if folder == best_folder else ""
-                print(f"    - {folder.name}: plots={has_plots}, metrics={metrics_lines} lines{keep_marker}")
+                timestamp = extract_timestamp(folder.name) or "?"
+                keep_marker = " [KEEP]" if folder == keep_folder else ""
+                print(f"    - {folder.name}: ts={timestamp}, ckpt={has_ckpt}, plots={has_plots}, metrics={metrics_lines}{keep_marker}")
 
-        # Delete non-best folders
+        # Delete non-kept folders
         for folder in folders:
-            if folder == best_folder:
+            if folder == keep_folder:
                 continue
 
             folder_size = get_folder_size(folder)
@@ -205,20 +287,36 @@ Examples:
             if args.execute:
                 shutil.rmtree(folder)
 
+        # For earliest mode: also delete the kept folder if it has no checkpoints
+        if args.mode == "earliest" and not has_checkpoints(keep_folder):
+            folder_size = get_folder_size(keep_folder)
+            total_bytes += folder_size
+            total_deleted += 1
+            empty_earliest_deleted += 1
+
+            print(f"  Earliest folder has NO checkpoints!")
+            print(f"  {'Deleting' if args.execute else 'Would delete'}: {keep_folder.name} ({format_size(folder_size)})")
+
+            if args.execute:
+                shutil.rmtree(keep_folder)
+
     # Summary
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
+    print(f"Selection mode: {args.mode}")
     print(f"Total experiment folders scanned: {sum(len(f) for f in prefix_groups.values())}")
     print(f"Groups with duplicates: {groups_with_duplicates}")
     print(f"Folders {'deleted' if args.execute else 'to delete'}: {total_deleted}")
+    if args.mode == "earliest" and empty_earliest_deleted > 0:
+        print(f"  (includes {empty_earliest_deleted} earliest folders with no checkpoints)")
     print(f"Space {'freed' if args.execute else 'to free'}: {format_size(total_bytes)}")
 
     # Reminder for dry run
     if not args.execute and total_deleted > 0:
         print("\n" + "-" * 70)
         print("This was a DRY RUN. To actually delete folders, run with --execute:")
-        print(f"  python utils/cleanup_duplicates.py {args.directory} --execute")
+        print(f"  python utils/cleanup_duplicates.py {args.directory} --mode {args.mode} --execute")
 
 
 if __name__ == "__main__":
