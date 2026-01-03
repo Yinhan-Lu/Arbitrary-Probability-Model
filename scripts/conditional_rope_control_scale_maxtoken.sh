@@ -220,7 +220,7 @@ MAX_RETRIES=5
 EXP_NAME="${EXP_NAME}"
 
 # Experiment pattern for finding existing experiments
-EXP_PATTERN="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_*"
+EXP_PATTERN="cond0-${COND_PCT}_max_block_rope_${MODEL_CONFIG}_conditional_[0-9]*"
 
 # =========================================================================
 # RETRY LOOP
